@@ -19,16 +19,17 @@ def format_date_jp(d: datetime.date) -> str:
     weekday = WEEKDAY_JP[d.weekday()]
     return f"{d.month}/{d.day}（{weekday}）"
 
-# セッションステート初期化（尺の入力用）
-if "duration_val" not in st.session_state:
-    st.session_state.duration_val = 15.0
+# セッションステート初期化（尺の入力用キーを統一）
+if "duration_minutes" not in st.session_state:
+    st.session_state.duration_minutes = 15.0
 
 def set_duration(minutes: float):
-    st.session_state.duration_val = float(minutes)
+    st.session_state.duration_minutes = float(minutes)
 
 def add_duration(diff: float):
-    new_val = max(1.0, min(300.0, st.session_state.duration_val + diff))
-    st.session_state.duration_val = float(new_val)
+    current = st.session_state.get("duration_minutes", 15.0)
+    new_val = max(1.0, min(300.0, current + diff))
+    st.session_state.duration_minutes = float(new_val)
 
 # カスタムCSS
 st.markdown("""
@@ -188,7 +189,13 @@ with tab1:
             preset_list = [5, 10, 15, 20, 30, 45, 60]
             for i, p_val in enumerate(preset_list):
                 with p_cols[i]:
-                    st.button(f"{p_val}分", key=f"btn_p_{p_val}", on_click=set_duration, args=(float(p_val),), use_container_width=True)
+                    st.button(
+                        f"{p_val}分",
+                        key=f"btn_p_{p_val}",
+                        on_click=set_duration,
+                        args=(float(p_val),),
+                        use_container_width=True
+                    )
 
             # 増減ステップ設定 & 数値入力
             col_num, col_step_type = st.columns([3, 2])
@@ -196,17 +203,15 @@ with tab1:
                 step_unit = st.radio("＋／－ の増減単位", [5.0, 10.0, 1.0], format_func=lambda x: f"{int(x)}分単位", horizontal=True)
 
             with col_num:
+                # key="duration_minutes" にバインド（value引数を外すことでセッションステートと完全同期）
                 duration_val = st.number_input(
                     "尺（分）",
                     min_value=1.0,
                     max_value=300.0,
-                    value=st.session_state.duration_val,
                     step=step_unit,
-                    key="duration_input_field",
+                    key="duration_minutes",
                     help="※5分未満は基本料金（5分基準）となります。60分超は補間（外挿）計算されます。"
                 )
-                # number_inputの手動変更をセッションステートに同期
-                st.session_state.duration_val = duration_val
 
             # クイック加算・減算ボタン
             b_c1, b_c2, b_c3, b_c4 = st.columns(4)
