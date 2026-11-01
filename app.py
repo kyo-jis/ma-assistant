@@ -74,8 +74,8 @@ st.markdown("""
 # ==========================================
 def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, str]:
     """
-    YouTube・番組 / ドラマ・自主映画 の補間計算を行う関数
-    YouTube基準:
+    YouTube・配信 / 番組 / ドラマ・自主映画 の補間計算を行う関数
+    YouTube・番組基準:
       5分 = 6,000円
       15分 = 9,000円  (傾き 300円/分)
       30分 = 12,000円 (傾き 200円/分)
@@ -150,9 +150,10 @@ with tab1:
         client_name = st.text_input("クライアント名（任意）", placeholder="例: 〇〇 様")
         project_title = st.text_input("案件名・動画タイトル（任意）", placeholder="例: YouTube対談企画 MA作業")
 
-        # 1. 案件ジャンル
+        # 1. 案件ジャンル（「YouTube・配信」と「番組」を分割）
         genres = [
-            "YouTube・番組",
+            "YouTube・配信",
+            "番組",
             "ドラマ・自主映画",
             "CM（15秒・30秒）",
             "中島知子のおんせんさんぽ",
@@ -167,7 +168,7 @@ with tab1:
         work_hours = 1.0
 
         # 条件付き入力項目
-        if selected_genre in ["YouTube・番組", "ドラマ・自主映画"]:
+        if selected_genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
             duration_val = st.number_input(
                 "尺の入力（分単位）",
                 min_value=1.0,
@@ -276,8 +277,8 @@ with tab1:
             )
             schedule_handover_text = st.text_input(
                 "データご搬入",
-                value="本編？ 　ナレ：11/2（月）21:30ごろ",
-                placeholder="例: 本編？ 　ナレ：11/2（月）21:30ごろ"
+                value="本編：未定、ナレ：11/2（月）21:30ごろ",
+                placeholder="例: 本編：未定、ナレ：11/2（月）21:30ごろ"
             )
             schedule_work_text = st.text_input(
                 "作業予定日",
@@ -285,23 +286,49 @@ with tab1:
                 placeholder="例: 11/2（月）夜、11/4 夕方以降"
             )
 
-        include_delay_note = st.checkbox(
-            "搬入遅延に関する注記を含める",
-            value=True,
-            help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
-        )
+        # スケジュールに関する注記設定
+        st.markdown("**スケジュールに関する注記（トラブル防止・早期確定の促進）**")
+        col_note1, col_note2 = st.columns(2)
+        with col_note1:
+            include_first_come_note = st.checkbox(
+                "作業枠の仮押さえ不可・先着順の注記を含める",
+                value=True,
+                help="「作業予定日は現時点の目安となり、正式ご購入の先着順で確定します」という案内です。"
+            )
+        with col_note2:
+            include_delay_note = st.checkbox(
+                "搬入遅延に関する注記を含める",
+                value=True,
+                help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
+            )
 
-        with st.expander("🎚️ 納品仕様・音声レベル設定（ココナラ・プロ向け仕様）", expanded=False):
+        # 納品仕様・音声レベル設定
+        st.markdown("---")
+        with st.expander("🎚️ 納品仕様・音声レベル設定（ココナラ・プロ向け仕様）", expanded=True):
+            # ジャンルに応じたデフォルトインデックスの選定
+            default_spec_idx = 1 if selected_genre == "YouTube・配信" else 0
+
             audio_spec = st.selectbox(
                 "音声レベル（ラウドネス規準）",
                 [
-                    "平均ラウドネス値 -24.0 LKFS (True Peak -1.0dBTP) 【テレビ・CM・放送基準】",
-                    "平均ラウドネス値 -14.0 LUFS (True Peak -1.0dBTP) 【YouTube・Web基準】",
-                    "平均ラウドネス値 -16.0 LUFS (True Peak -1.0dBTP) 【Podcast・音声配信基準】",
+                    "平均ラウドネス値 -24.0 LKFS (True Peak -1.0dBTP) 【放送規格 ARIB TR-B32】",
+                    "目標ラウドネス値 -14.0 LUFS (True Peak -1.0dBTP) 【YouTube・Web動画 推奨値】",
+                    "目標ラウドネス値 -16.0 LUFS (True Peak -1.0dBTP) 【Podcast・音声配信向け目安】",
                     "クライアント様指定基準に準拠",
                     "指定なし（最適なバランスに調整）"
-                ]
+                ],
+                index=default_spec_idx
             )
+
+            # -14 LUFS 選択時（またはYouTube選択時）の注釈オプション
+            include_lufs14_note = False
+            if "14.0 LUFS" in audio_spec:
+                include_lufs14_note = st.checkbox(
+                    "音質維持に関する注記を含める（-14 LUFSが困難な場合の案内）",
+                    value=True,
+                    help="作品の構成や音割れ・ノイズ浮き防止のため、最適な聴きやすさ（-15〜-16 LUFS前後）を優先する旨の案内です。"
+                )
+
             audio_format = st.selectbox(
                 "納品フォーマット",
                 [
@@ -321,7 +348,8 @@ with tab1:
             st.markdown("""
             | ジャンル | 5分 | 15分 | 30分 | 60分 | 補間レート |
             | :--- | :--- | :--- | :--- | :--- | :--- |
-            | **YouTube・番組** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
+            | **YouTube・配信** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
+            | **番組** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
             | **ドラマ・自主映画** | 12,000円 | 18,000円 | 24,000円 | 48,000円 | 30分超: 800円/分 |
             
             - **CM（15秒・30秒）**: 通常 3,000円 / お得意様 2,000円（本数計算）
@@ -334,7 +362,7 @@ with tab1:
     detail_text = ""
     breakdown_text = ""
 
-    if selected_genre == "YouTube・番組":
+    if selected_genre in ["YouTube・配信", "番組"]:
         price_base, breakdown_text = calc_duration_price(duration_val, is_drama=False)
         detail_text = f"{duration_val:.1f}分"
     elif selected_genre == "ドラマ・自主映画":
@@ -398,8 +426,16 @@ with tab1:
             schedule_lines.append(f"・データご搬入： {schedule_handover_text.strip()}")
         if schedule_work_text.strip():
             schedule_lines.append(f"・作業予定日： {schedule_work_text.strip()}")
-        if include_delay_note and schedule_lines:
-            schedule_lines.append("※データご搬入が予定より遅れた場合、納期が後ろ倒しになる可能性がございます。")
+
+        # スケジュール注記
+        schedule_notes = []
+        if include_first_come_note:
+            schedule_notes.append("※作業予定日は現時点の空き状況に基づく目安となります。スケジュールの仮押さえは行っておりませんので、正式なご依頼（ご購入）の先着順にて確定とさせていただきます。万が一他案件で枠が埋まってしまった場合は、日程の再調整（またはご辞退）をご相談させていただく場合がございます。")
+        if include_delay_note:
+            schedule_notes.append("※データご搬入が予定より遅れた場合、納期が後ろ倒しになる可能性がございます。")
+
+        if schedule_notes and schedule_lines:
+            schedule_lines.extend(schedule_notes)
 
         schedule_block = ""
         if schedule_lines:
@@ -410,6 +446,8 @@ with tab1:
             f"・フォーマット： {audio_format}",
             f"・音声レベル： {audio_spec}"
         ]
+        if include_lufs14_note:
+            spec_lines.append("※作品全体のダイナミクス（音の強弱）や静寂の多い構成の場合、過度な音割れやノイズ浮きを防ぎ、聴きやすさを最優先して -15〜-16 LUFS 前後で着地・調整させていただく場合がございます。")
         if retake_policy != "記載しない":
             spec_lines.append(f"・修正対応： {retake_policy}")
         spec_block = "■ 納品データの仕様・音声レベル\n" + "\n".join(spec_lines)
@@ -446,8 +484,8 @@ with tab1:
 ・ジャンル: {selected_genre}（{detail_text}）
 ・お見積金額: {price_label}{simple_sched}
 
-スケジュールや仕様などのご相談も柔軟に対応可能です。
-ご確認のほどよろしくお願いいたします！"""
+※スケジュールは正式ご依頼の先着順で確定となります。
+仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！"""
 
         # パターン3: ビジネスメール・詳細版
         quote_msg_detailed = f"""{client_display}
