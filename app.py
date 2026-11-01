@@ -13,7 +13,7 @@ st.set_page_config(
 # カスタムCSS（シンプルで見やすいデザイン）
 st.markdown("""
 <style>
-    /* メインタイトルまわり */
+    /* メインタイトル */
     .main-header {
         font-size: 1.8rem;
         font-weight: 700;
@@ -42,12 +42,12 @@ st.markdown("""
         font-size: 0.85rem;
         color: #64748B;
     }
-    /* ボタンやタブの微調整 */
+    /* タブデザイン */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px;
+        padding: 8px 16px;
         font-weight: 600;
     }
 </style>
@@ -103,7 +103,7 @@ def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, st
         formula_detail = f"30分基準({base:,}円) + 追加{diff:.1f}分 × {rate:,}円/分 = {int(round(price)):,}円"
         return int(round(price)), formula_detail
 
-    # 60分超（補間・外挿: 60分超は400円/分、ドラマは800円/分を加算）
+    # 60分超（補間・外挿）
     rate = 400 * factor
     base = 24000 * factor
     diff = minutes - 60
@@ -257,11 +257,22 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-        # コピペ用メッセージ作成
-        client_display = client_name if client_name.strip() else "〇〇様"
+        # 宛名・案件名のプレースホルダー処理
+        client_display = client_name.strip() if client_name.strip() else "〇〇様"
         project_display = f"「{project_title.strip()}」" if project_title.strip() else ""
 
-        quote_message = f"""{client_display}
+        # 見積もりメッセージの複数パターン生成
+        quote_msg_simple = f"""{client_display}
+お世話になっております。
+ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
+
+【お見積り】
+・案件ジャンル : {selected_genre}（{detail_text}）
+・お見積り金額 : {price_label}
+
+ご確認のほどよろしくお願いいたします！"""
+
+        quote_msg_detailed = f"""{client_display}
 
 いつも大変お世話になっております。
 ご相談いただきました{project_display}音声編集（MA）のお見積もりをお送りいたします。
@@ -283,8 +294,13 @@ with tab1:
 何卒ご検討のほど、よろしくお願い申し上げます。"""
 
         st.markdown("##### ✉️ コピペ用お見積りメッセージ")
-        st.caption("右上のコピーボタン、または枠内を選択してそのままクライアントにお送りいただけます。")
-        st.text_area("見積もりメッセージ本文", value=quote_message, height=330)
+        st.caption("用途に合わせてタブを切り替えてそのままコピーできます。")
+
+        q_tab1, q_tab2 = st.tabs(["⚡ シンプル版（チャット用）", "📋 詳細版（メール・正式用）"])
+        with q_tab1:
+            st.text_area("シンプルお見積り", value=quote_msg_simple, height=180, key="q_simple")
+        with q_tab2:
+            st.text_area("詳細お見積り", value=quote_msg_detailed, height=310, key="q_detailed")
 
 
 # ==========================================
@@ -322,39 +338,56 @@ with tab2:
             help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。"
         )
 
-        # メッセージの用途切り替え
-        msg_style = st.radio(
-            "出力タイプ",
-            ["納品チャット用メッセージ（丁寧な挨拶文）", "プラットフォーム評価欄用（レビュー短文）"],
-            horizontal=True
-        )
-
     # --- 評価コメント生成ロジック ---
-    appeal_text_chat = "\n\nまた今後、音声編集（MA）やノイズ処理等でお困りの際や別案件がございましたら、ぜひお気軽にお声がけいただけますと幸いです。" if appeal_flag else ""
-    appeal_text_review = " また音声編集でお困りの際はぜひお声がけください！" if appeal_flag else ""
-
     target_name = eval_client_name.strip() if eval_client_name.strip() else "〇〇様"
     target_project = f"「{eval_project_name.strip()}」の" if eval_project_name.strip() else ""
 
+    # アピール文（トーン別）
+    appeal_short = " また音声編集でお困りの際は気軽にお声がけください！" if appeal_flag else ""
+    appeal_standard = "\n\nまた今後、音声編集（MA）やノイズ処理等でお困りの際や別案件がございましたら、ぜひお気軽にお声がけいただけますと幸いです。" if appeal_flag else ""
+    appeal_formal = "\n\nなお、今後とも音声編集（MA）や整音作業等のご相談がございましたら、誠心誠意ご対応させていただきますので、何卒お気軽にお申し付けくださいませ。" if appeal_flag else ""
+    appeal_review = " また音声編集でお困りの際はぜひお声がけください！" if appeal_flag else ""
+
+    # 1. シンプル（短文・サクッとチャットで送りたい時）
     if impression == "とてもスムーズ":
-        # チャット用
-        generated_chat = f"""{target_name}
+        msg_simple = f"""{target_name}
+お世話になっております！
+{target_project}音声編集（MA）の作業が完了いたしましたので、納品データをお送りいたします。
+
+迅速にご対応いただき大変助かりました！ご確認のほどよろしくお願いいたします。{appeal_short}"""
+
+        msg_standard = f"""{target_name}
 
 いつも大変お世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました！
 
 ご指示や素材のご手配が非常に的確で、メッセージのレスポンスも迅速にしていただいたおかげで、終始大変スムーズに作業を進行することができました。心より感謝申し上げます。
 
-納品データについて気になる点や微調整などがございましたら、いつでもお気軽にご連絡ください。{appeal_text_chat}
+納品データについて気になる点や微調整などがございましたら、いつでもお気軽にご連絡ください。{appeal_standard}
 
 今後ともどうぞよろしくお願いいたします。"""
 
-        # 評価欄用
-        generated_review = f"迅速かつ丁寧なご対応をいただき、終始安心してスムーズにお取引を進めることができました。素晴らしいご縁に心より感謝申し上げます。{appeal_text_review}今後ともよろしくお願いいたします。"
+        msg_formal = f"""{target_name}
+
+いつも大変お世話になっております。
+この度は、{target_project}音声編集（MA）業務のご依頼を賜り、誠にありがとうございました。
+
+ご指示や素材のご手配を迅速にいただき、円滑に作業を進行することができましたこと、深く感謝申し上げます。
+納品データを添付いたしましたので、ご査収のほどよろしくお願い申し上げます。
+修正や追加のご要望がございましたら、迅速に対応いたしますので何なりとお申し付けください。{appeal_formal}
+
+今後とも何卒よろしくお願い申し上げます。"""
+
+        msg_review = f"迅速かつ丁寧なご対応をいただき、終始安心してスムーズにお取引を進めることができました。素晴らしいご縁に心より感謝申し上げます。{appeal_review}今後ともよろしくお願いいたします。"
 
     elif impression == "普通":
-        # チャット用
-        generated_chat = f"""{target_name}
+        msg_simple = f"""{target_name}
+お世話になっております。
+{target_project}音声編集（MA）の作業が完了いたしましたので、納品データをお送りいたします。
+
+ご確認のほどよろしくお願いいたします。何か気になる点がございましたらお知らせください。{appeal_short}"""
+
+        msg_standard = f"""{target_name}
 
 いつも大変お世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
@@ -362,43 +395,82 @@ with tab2:
 ご丁寧にご対応いただき、無事に納品完了まで進めることができました。
 今回の仕上がりが今後の制作のお役に立てておりましたら幸いです。
 
-納品データのご確認で何かございましたら、お申し付けください。{appeal_text_chat}
+納品データのご確認で何かございましたら、お申し付けください。{appeal_standard}
 
 また機会がございましたら、どうぞよろしくお願い申し上げます。"""
 
-        # 評価欄用
-        generated_review = f"終始丁寧にご対応いただき、無事にお取引を完了することができました。ご依頼いただき誠にありがとうございました。{appeal_text_review}"
+        msg_formal = f"""{target_name}
+
+いつも大変お世話になっております。
+この度は、{target_project}音声編集（MA）業務のご依頼を賜り、心より御礼申し上げます。
+
+ご丁寧なご連携をいただき、無事に納品工程を完了することができました。
+仕上がりデータをご確認いただき、不都合な点などがございましたらご連絡いただけますと幸いです。{appeal_formal}
+
+今後ともご愛顧のほど、よろしくお願い申し上げます。"""
+
+        msg_review = f"終始丁寧にご対応いただき、無事にお取引を完了することができました。ご依頼いただき誠にありがとうございました。{appeal_review}"
 
     else:  # 少し時間がかかった
-        # チャット用
-        generated_chat = f"""{target_name}
+        msg_simple = f"""{target_name}
+お世話になっております。
+{target_project}音声編集（MA）の納品データをお送りいたします。
+
+ご調整いただきありがとうございました。ご確認のほどよろしくお願いいたします。{appeal_short}"""
+
+        msg_standard = f"""{target_name}
 
 いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
 追加のご調整やご確認などを経て、無事に納品完了まで進めることができ安心いたしました。最後まで丁寧にお付き合いいただき、誠にありがとうございました。
 
-今回の音声データがお役に立ちましたら幸いでございます。{appeal_text_chat}
+今回の音声データがお役に立ちましたら幸いでございます。{appeal_standard}
 
 またの機会がございましたら、よろしくお願い申し上げます。"""
 
-        # 評価欄用
-        generated_review = f"ご丁寧にご対応いただき、無事にお取引を完了することができました。最後までお付き合いいただきありがとうございました。{appeal_text_review}"
+        msg_formal = f"""{target_name}
+
+拝啓
+貴社におかれましては、ますますご清栄のこととお慶び申し上げます。
+この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
+
+仕様の確認および追加調整にお時間を頂戴いたしましたが、無事に納品データを仕上げることができ安心いたしました。最後まで丁寧にお付き合いいただき厚く御礼申し上げます。
+添付データのご確認をよろしくお願い申し上げます。{appeal_formal}
+
+またの機会がございましたら、何卒よろしくお願い申し上げます。
+敬具"""
+
+        msg_review = f"ご丁寧にご対応いただき、無事にお取引を完了することができました。最後までお付き合いいただきありがとうございました。{appeal_review}"
 
     # --- 右カラム: 生成結果 ---
     with col_eval_result:
-        st.subheader("📝 生成されたメッセージ")
+        st.subheader("📝 生成メッセージ（選べる4パターン）")
+        st.caption("場面や相手との関係性に合わせて、タブを切り替えてそのままコピペできます。")
 
-        if msg_style == "納品チャット用メッセージ（丁寧な挨拶文）":
-            st.markdown("##### ✉️ 取引チャット・メール送信メッセージ")
-            st.caption("納品承諾時や取引完了時のチャットにそのまま送信できます。")
-            st.text_area("納品完了メッセージ", value=generated_chat, height=330)
-        else:
-            st.markdown("##### ⭐ プラットフォーム評価コメント欄（短文レビュー）")
-            st.caption("クラウドソーシング等の「評価・感想」入力欄にコピペして利用できます。")
-            st.text_area("評価コメント", value=generated_review, height=180)
+        subtab1, subtab2, subtab3, subtab4 = st.tabs([
+            "⚡ シンプル（短文チャット）",
+            "📝 標準（丁寧・親しみ）",
+            "👔 フォーマル（しっかり）",
+            "⭐ 評価欄用（レビュー短文）"
+        ])
 
-            st.markdown("---")
-            st.markdown("##### 💡 納品チャット用メッセージも確認する")
-            with st.expander("チャット用メッセージを表示"):
-                st.text_area("チャット用本文", value=generated_chat, height=250)
+        with subtab1:
+            st.markdown("##### ⚡ シンプル版（要点のみ・短文）")
+            st.caption("Slack、Chatwork、チャットツールでサクッと納品連絡したい時に最適です。")
+            st.text_area("シンプル納品メッセージ", value=msg_simple, height=180, key="msg_simple_area")
+
+        with subtab2:
+            st.markdown("##### 📝 標準版（バランス・親しみやすい丁寧さ）")
+            st.caption("一般的なクラウドソーシングや取引メッセージで最も使いやすいトーンです。")
+            st.text_area("標準納品メッセージ", value=msg_standard, height=270, key="msg_std_area")
+
+        with subtab3:
+            st.markdown("##### 👔 フォーマル版（ビジネス・企業向け）")
+            st.caption("企業案件やメール連絡、かしこまったやり取りの際に活用できます。")
+            st.text_area("フォーマル納品メッセージ", value=msg_formal, height=290, key="msg_formal_area")
+
+        with subtab4:
+            st.markdown("##### ⭐ プラットフォーム評価欄用（レビュー短文）")
+            st.caption("クラウドワークスやランサーズ等の取引完了時のレビュー欄にコピペできます。")
+            st.text_area("評価コメント本文", value=msg_review, height=140, key="msg_review_area")
