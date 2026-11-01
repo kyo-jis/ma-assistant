@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# カスタムCSS（シンプルで見やすいデザイン）
+# カスタムCSS（シンプルで見やすく、枠が広くすっきりしたデザイン）
 st.markdown("""
 <style>
     /* メインタイトル */
@@ -23,7 +23,7 @@ st.markdown("""
     .sub-header {
         font-size: 0.95rem;
         color: #4B5563;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
     /* カード風スタイル */
     .metric-card {
@@ -49,6 +49,12 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] {
         padding: 8px 16px;
         font-weight: 600;
+    }
+    /* コードブロックのフォントと余白改善 */
+    pre code {
+        font-size: 0.92rem !important;
+        line-height: 1.6 !important;
+        font-family: 'Consolas', 'Courier New', monospace !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -119,7 +125,7 @@ st.markdown('<div class="main-header">🎙️ 音声編集（MA）業務アシ�
 st.markdown('<div class="sub-header">見積もり計算からコピペ用メッセージ、納品後の評価コメントまでをワンストップで作成します。</div>', unsafe_allow_html=True)
 
 # 2つのタブを作成
-tab1, tab2 = st.tabs(["💰 見積もり作成", "💬 評価コメント作成"])
+tab1, tab2 = st.tabs(["💰 見積もり・提案作成", "💬 納品・評価コメント作成"])
 
 
 # ==========================================
@@ -129,11 +135,11 @@ with tab1:
     col_input, col_result = st.columns([1, 1], gap="large")
 
     with col_input:
-        st.subheader("📋 案件情報の入力")
+        st.subheader("📋 案件・基本情報の入力")
 
-        # 任意入力：宛名・案件名
-        client_name = st.text_input("クライアント名（任意）", placeholder="例: 株式会社〇〇 ご担当者 様")
-        project_title = st.text_input("案件名・動画タイトル（任意）", placeholder="例: YouTubeチャンネル 音声MA案件")
+        # 宛名・案件名
+        client_name = st.text_input("クライアント名（任意）", placeholder="例: 〇〇 様")
+        project_title = st.text_input("案件名・動画タイトル（任意）", placeholder="例: YouTube対談企画 MA作業")
 
         # 1. 案件ジャンル
         genres = [
@@ -188,6 +194,44 @@ with tab1:
         # 税金・表記オプション
         tax_option = st.radio("消費税の表示", ["税込（10%）", "税抜（+消費税）", "税込（内税表記）"], horizontal=True)
 
+        st.markdown("---")
+        st.subheader("📅 スケジュール設定")
+        st.caption("空欄の項目はメッセージから自動で省略されます。柔軟な表現（例: 〇日夜、要相談など）で入力可能です。")
+
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            schedule_delivery = st.text_input("ご希望納期", placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで")
+            schedule_handover = st.text_input("データご搬入予定", placeholder="例: 本編：未定、ナレ：11/2（月）21:30ごろ")
+        with col_s2:
+            schedule_work = st.text_input("作業予定日（対応可能日）", placeholder="例: 11/2（月）夜、11/4（水）夕方以降")
+            include_delay_note = st.checkbox("搬入遅延に関する注記を含める", value=True, help="データ搬入が遅れた場合に納期が変動する旨の注記です。")
+
+        with st.expander("🎚️ 納品仕様・音声レベル設定（ココナラ・プロ向け仕様）", expanded=False):
+            audio_spec = st.selectbox(
+                "音声レベル（ラウドネス規準）",
+                [
+                    "平均ラウドネス値 -24.0 LKFS (True Peak -1.0dBTP) 【テレビ・CM・放送基準】",
+                    "平均ラウドネス値 -14.0 LUFS (True Peak -1.0dBTP) 【YouTube・Web基準】",
+                    "平均ラウドネス値 -16.0 LUFS (True Peak -1.0dBTP) 【Podcast・音声配信基準】",
+                    "クライアント様指定基準に準拠",
+                    "指定なし（最適なバランスに調整）"
+                ]
+            )
+            audio_format = st.selectbox(
+                "納品フォーマット",
+                [
+                    "WAV (48kHz / 24bit)",
+                    "WAV (48kHz / 16bit)",
+                    "WAV",
+                    "WAV + MP3 (320kbps)",
+                    "ご指定のフォーマット"
+                ]
+            )
+            retake_policy = st.selectbox(
+                "無料修正対応",
+                ["2回まで無料対応（※こちらの不備・整音ミスは無制限）", "1回まで無料対応", "ご納得いただけるまで対応", "記載しない"]
+            )
+
         with st.expander("ℹ️ 料金テーブルの確認（基準レート）"):
             st.markdown("""
             | ジャンル | 5分 | 15分 | 30分 | 60分 | 補間レート |
@@ -229,16 +273,16 @@ with tab1:
     # 税計算
     if tax_option == "税込（10%）":
         display_total = int(round(price_base * 1.10))
-        price_label = f"¥{display_total:,}（税込）"
+        price_label = f"{display_total:,} 円（税込）"
         tax_detail = f"税抜: ¥{price_base:,} / 消費税(10%): ¥{int(round(price_base * 0.10)):,}"
     elif tax_option == "税抜（+消費税）":
         display_total = price_base
         tax_amount = int(round(price_base * 0.10))
-        price_label = f"¥{display_total:,}（税抜 / 税込 ¥{display_total + tax_amount:,}）"
+        price_label = f"{display_total:,} 円（税抜 / 税込 {display_total + tax_amount:,} 円）"
         tax_detail = f"消費税(10%): ¥{tax_amount:,}"
     else:  # 税込（内税表記）
         display_total = price_base
-        price_label = f"¥{display_total:,}（税込）"
+        price_label = f"{display_total:,} 円（税込）"
         tax_detail = f"※上記金額には消費税が含まれております。"
 
     # --- 右カラム: 計算結果 & メッセージ生成 ---
@@ -249,7 +293,7 @@ with tab1:
         st.markdown(f"""
         <div class="metric-card">
             <div style="font-size: 0.9rem; color: #475569; font-weight: 600;">合計お見積り金額</div>
-            <div class="total-price">{price_label}</div>
+            <div class="total-price">¥{price_label}</div>
             <div class="tax-note">{tax_detail}</div>
             <div style="margin-top: 0.8rem; font-size: 0.85rem; color: #334155;">
                 <strong>内訳:</strong> {breakdown_text}
@@ -257,25 +301,74 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-        # 宛名・案件名のプレースホルダー処理
+        # 宛名・案件名
         client_display = client_name.strip() if client_name.strip() else "〇〇様"
         project_display = f"「{project_title.strip()}」" if project_title.strip() else ""
 
-        # 見積もりメッセージの複数パターン生成
+        # スケジュールブロック作成
+        schedule_lines = []
+        if schedule_delivery.strip():
+            schedule_lines.append(f"・ご希望納期： {schedule_delivery.strip()}")
+        if schedule_handover.strip():
+            schedule_lines.append(f"・データご搬入： {schedule_handover.strip()}")
+        if schedule_work.strip():
+            schedule_lines.append(f"・作業予定日： {schedule_work.strip()}")
+        if include_delay_note and schedule_lines:
+            schedule_lines.append("※データご搬入が予定より遅れた場合、納期が後ろ倒しになる可能性がございます。")
+
+        schedule_block = ""
+        if schedule_lines:
+            schedule_block = "■ 制作スケジュール（案）\n" + "\n".join(schedule_lines) + "\n\n"
+
+        # 仕様ブロック作成
+        spec_lines = [
+            f"・フォーマット： {audio_format}",
+            f"・音声レベル： {audio_spec}"
+        ]
+        if retake_policy != "記載しない":
+            spec_lines.append(f"・修正対応： {retake_policy}")
+        spec_block = "■ 納品データの仕様・音声レベル\n" + "\n".join(spec_lines)
+
+        # パターン1: ココナラ・クラウドソーシング特化型（ユーザー様の形式を洗練）
+        quote_msg_coconala = f"""{client_display}
+
+いつも大変お世話になっております。
+ご相談いただきました{project_display}音声編集（MA）のお見積もり・スケジュール案をお送りいたします。
+
+■ お見積り金額
+合計： {price_label}
+（内訳：{selected_genre} {detail_text}）
+
+{schedule_block}{spec_block}
+
+■ 主な作業内容
+・ノイズ除去（リップノイズ・部屋鳴り・環境音の低減）
+・音量・音圧バランス調整（ラウドネス規準準拠）
+・BGM・効果音（SE）のMA処理・整音ミックス
+・マスタリングおよび指定フォーマットでの書き出し
+
+上記スケジュールおよび内容で問題ございませんでしたら、いつでも正式にご依頼いただけますと幸いです。
+ご不明点やご予算・日程のご相談がございましたら、柔軟に対応いたしますのでお気軽にお申し付けください。
+何卒よろしくお願い申し上げます。"""
+
+        # パターン2: シンプル（チャット・即答用）
+        simple_sched = f"\n・希望納期: {schedule_delivery.strip()}" if schedule_delivery.strip() else ""
         quote_msg_simple = f"""{client_display}
-お世話になっております。
+お世話になっております！
 ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
 
 【お見積り】
-・案件ジャンル : {selected_genre}（{detail_text}）
-・お見積り金額 : {price_label}
+・ジャンル: {selected_genre}（{detail_text}）
+・お見積金額: {price_label}{simple_sched}
 
+スケジュールや仕様などのご相談も柔軟に対応可能です。
 ご確認のほどよろしくお願いいたします！"""
 
+        # パターン3: ビジネスメール・詳細版
         quote_msg_detailed = f"""{client_display}
 
 いつも大変お世話になっております。
-ご相談いただきました{project_display}音声編集（MA）のお見積もりをお送りいたします。
+ご相談いただきました{project_display}音声編集（MA）につきまして、お見積もりと制作進行案をご案内申し上げます。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 【お見積もり内容】
@@ -284,23 +377,41 @@ with tab1:
 ・お見積り金額 : {price_label}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-【主な作業内容（想定）】
-・ノイズ除去（リップノイズ・環境音・ヒスノイズ低減）
-・音量・音圧バランス調整（ラウドネス規準準拠）
-・BGM / 効果音（SE）のMA処理・ミックス
-・最終マスタリングおよび指定フォーマットでの書き出し
+{schedule_block}{spec_block}
 
-ご不明な点やスケジュール、ご予算のご相談がございましたら、柔軟に対応させていただきますので、いつでもお気軽にお申し付けください。
-何卒ご検討のほど、よろしくお願い申し上げます。"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+【作業工程・内容】
+1. 音声素材のノイズ低減（リップノイズ・空調音・ヒスノイズ除去）
+2. 話者ごとの音量・声質バランスの調整（EQ・コンプレッサー処理）
+3. BGM・SE（効果音）の配置および適切なダッキング処理
+4. 規定ラウドネス値に合わせた最終マスタリング
 
-        st.markdown("##### ✉️ コピペ用お見積りメッセージ")
-        st.caption("用途に合わせてタブを切り替えてそのままコピーできます。")
+スケジュール等につきまして、調整のご要望がございましたらお申し付けくださいませ。
+ご検討のほど、何卒よろしくお願い申し上げます。"""
 
-        q_tab1, q_tab2 = st.tabs(["⚡ シンプル版（チャット用）", "📋 詳細版（メール・正式用）"])
+        st.markdown("##### ✉️ コピペ用メッセージ（右上のアイコンでワンクリックコピー）")
+        st.caption("枠の右上に表示されるコピーボタン（📋アイコン）を押すと、一瞬でクリップボードにコピーされます。")
+
+        q_tab1, q_tab2, q_tab3 = st.tabs([
+            "🌟 ココナラ・案件提案用（スケジュール・仕様入り）",
+            "⚡ シンプル版（チャット用）",
+            "📋 詳細版（ビジネスメール用）"
+        ])
+
         with q_tab1:
-            st.text_area("シンプルお見積り", value=quote_msg_simple, height=180, key="q_simple")
+            st.code(quote_msg_coconala, language="markdown")
+            with st.expander("✏️ テキストを直接編集してコピーしたい場合"):
+                st.text_area("編集用テキストエリア", value=quote_msg_coconala, height=350, key="edit_coconala")
+
         with q_tab2:
-            st.text_area("詳細お見積り", value=quote_msg_detailed, height=310, key="q_detailed")
+            st.code(quote_msg_simple, language="markdown")
+            with st.expander("✏️ テキストを直接編集してコピーしたい場合"):
+                st.text_area("編集用テキストエリア", value=quote_msg_simple, height=200, key="edit_simple")
+
+        with q_tab3:
+            st.code(quote_msg_detailed, language="markdown")
+            with st.expander("✏️ テキストを直接編集してコピーしたい場合"):
+                st.text_area("編集用テキストエリア", value=quote_msg_detailed, height=350, key="edit_detailed")
 
 
 # ==========================================
@@ -348,7 +459,7 @@ with tab2:
     appeal_formal = "\n\nなお、今後とも音声編集（MA）や整音作業等のご相談がございましたら、誠心誠意ご対応させていただきますので、何卒お気軽にお申し付けくださいませ。" if appeal_flag else ""
     appeal_review = " また音声編集でお困りの際はぜひお声がけください！" if appeal_flag else ""
 
-    # 1. シンプル（短文・サクッとチャットで送りたい時）
+    # 1. シンプル
     if impression == "とてもスムーズ":
         msg_simple = f"""{target_name}
 お世話になっております！
@@ -446,7 +557,7 @@ with tab2:
     # --- 右カラム: 生成結果 ---
     with col_eval_result:
         st.subheader("📝 生成メッセージ（選べる4パターン）")
-        st.caption("場面や相手との関係性に合わせて、タブを切り替えてそのままコピペできます。")
+        st.caption("枠の右上に表示されるコピーボタン（📋アイコン）を押すと、一瞬でコピーできます。")
 
         subtab1, subtab2, subtab3, subtab4 = st.tabs([
             "⚡ シンプル（短文チャット）",
@@ -457,20 +568,24 @@ with tab2:
 
         with subtab1:
             st.markdown("##### ⚡ シンプル版（要点のみ・短文）")
-            st.caption("Slack、Chatwork、チャットツールでサクッと納品連絡したい時に最適です。")
-            st.text_area("シンプル納品メッセージ", value=msg_simple, height=180, key="msg_simple_area")
+            st.code(msg_simple, language="markdown")
+            with st.expander("✏️ テキストを直接編集したい場合"):
+                st.text_area("編集用", value=msg_simple, height=160, key="edit_ev_simple")
 
         with subtab2:
             st.markdown("##### 📝 標準版（バランス・親しみやすい丁寧さ）")
-            st.caption("一般的なクラウドソーシングや取引メッセージで最も使いやすいトーンです。")
-            st.text_area("標準納品メッセージ", value=msg_standard, height=270, key="msg_std_area")
+            st.code(msg_standard, language="markdown")
+            with st.expander("✏️ テキストを直接編集したい場合"):
+                st.text_area("編集用", value=msg_standard, height=250, key="edit_ev_std")
 
         with subtab3:
             st.markdown("##### 👔 フォーマル版（ビジネス・企業向け）")
-            st.caption("企業案件やメール連絡、かしこまったやり取りの際に活用できます。")
-            st.text_area("フォーマル納品メッセージ", value=msg_formal, height=290, key="msg_formal_area")
+            st.code(msg_formal, language="markdown")
+            with st.expander("✏️ テキストを直接編集したい場合"):
+                st.text_area("編集用", value=msg_formal, height=280, key="edit_ev_formal")
 
         with subtab4:
             st.markdown("##### ⭐ プラットフォーム評価欄用（レビュー短文）")
-            st.caption("クラウドワークスやランサーズ等の取引完了時のレビュー欄にコピペできます。")
-            st.text_area("評価コメント本文", value=msg_review, height=140, key="msg_review_area")
+            st.code(msg_review, language="markdown")
+            with st.expander("✏️ テキストを直接編集したい場合"):
+                st.text_area("編集用", value=msg_review, height=120, key="edit_ev_review")
