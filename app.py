@@ -58,7 +58,7 @@ def save_custom_programs(programs: list[dict]):
 # ==========================================
 if "quote_items" not in st.session_state:
     st.session_state.quote_items = [
-        {"id": 1, "genre": "YouTube・配信", "duration": 15.0}
+        {"id": 1, "genre": "番組", "duration": 15.0}
     ]
 if "next_item_id" not in st.session_state:
     st.session_state.next_item_id = 2
@@ -193,10 +193,10 @@ with tab1:
         project_title = st.text_input("案件名・案件全体の概要（任意）", placeholder="例: レギュラー番組 ＋ 番宣CM制作 MA作業")
 
         genres_list = [
-            "YouTube・配信",
             "番組",
-            "ドラマ・自主映画",
             "CM（15秒・30秒）",
+            "YouTube・配信",
+            "ドラマ・自主映画",
             "固定単価・レギュラー番組",
             "その他（作業時間計算）"
         ]
@@ -402,7 +402,7 @@ with tab1:
                             st.rerun()
 
         # 税金・表記オプション
-        tax_option = st.radio("消費税の表示", ["税込（10%）", "税抜（+消費税）", "税込（内税表記）"], horizontal=True)
+        tax_option = st.radio("消費税の表示", ["税込（内税表記）", "税込（10%）", "税抜（+消費税）"], index=0, horizontal=True)
 
         st.markdown("---")
         st.subheader("📅 制作スケジュール（案）の設定")
@@ -560,8 +560,8 @@ with tab1:
             st.markdown("""
             | ジャンル | 5分 (約2h) | 15分 (約3h) | 30分 (約4h) | 60分 (約8h) | 補間レート |
             | :--- | :--- | :--- | :--- | :--- | :--- |
-            | **YouTube・配信** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
             | **番組** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
+            | **YouTube・配信** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
             | **ドラマ・自主映画** | 12,000円 | 18,000円 | 24,000円 | 48,000円 | 30分超: 800円/分 |
             
             - **CM（15秒・30秒）**: 通常 3,000円 / お得意様 2,000円（本数計算）
