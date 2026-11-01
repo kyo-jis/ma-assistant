@@ -407,54 +407,126 @@ with tab1:
         st.markdown("---")
         st.subheader("📅 制作スケジュール（案）の設定")
 
-        schedule_mode = st.radio(
-            "スケジュールの入力方法",
-            ["📅 カレンダーから選ぶ（おすすめ）", "✏️ 自由に入力する（複数本・特殊な指定）"],
-            horizontal=True
-        )
+        # スケジュール入力モード判定
+        num_items = len(st.session_state.quote_items)
+        if num_items > 1:
+            schedule_mode_options = [
+                "📅 案件別に納期を指定（分納カレンダー）",
+                "📅 まとめて一括指定（共通カレンダー）",
+                "✏️ 自由に入力する（ココナラ形式など）"
+            ]
+        else:
+            schedule_mode_options = [
+                "📅 カレンダーから選ぶ（おすすめ）",
+                "✏️ 自由に入力する（特殊な指定など）"
+            ]
+
+        schedule_mode = st.radio("スケジュールの入力方法", schedule_mode_options, horizontal=True)
 
         today = datetime.date.today()
         schedule_delivery_text = ""
         schedule_handover_text = ""
         schedule_work_text = ""
 
-        if schedule_mode == "📅 カレンダーから選ぶ（おすすめ）":
+        time_options = ["中（終日）", "夕方まで", "午前中", "23:59まで", "18:00まで", "要相談"]
+        work_time_options = ["夜", "夕方以降", "終日", "午前中", "午後", "深夜"]
+
+        if "案件別に納期を指定" in schedule_mode:
+            st.markdown("##### 📌 各案件ごとの希望納期")
+            delivery_parts = []
+            for i, res in enumerate(items_calculation_results):
+                c_lbl, c_dt, c_tm = st.columns([2, 3, 2])
+                with c_lbl:
+                    st.write(f"**{i + 1}件目 ({res['genre'][:10]})**")
+                with c_dt:
+                    d_val = st.date_input(f"納期日付_{i+1}", value=today + datetime.timedelta(days=3 + i*4), key=f"d_date_{i}", label_visibility="collapsed")
+                with c_tm:
+                    t_val = st.selectbox(f"納期の時間帯_{i+1}", time_options, key=f"d_time_{i}", label_visibility="collapsed")
+                delivery_parts.append(f"{i + 1}本目：{format_date_jp(d_val)} {t_val}")
+            schedule_delivery_text = "、".join(delivery_parts)
+
+            st.markdown("##### 📦 データご搬入 ＆ 🛠️ 作業予定日")
+            col_h1, col_h2 = st.columns([3, 2])
+            with col_h1:
+                date_handover = st.date_input("データご搬入日", value=today + datetime.timedelta(days=1), key="multi_handover_d")
+            with col_h2:
+                time_handover = st.text_input("搬入時間・メモ", value="21:30ごろ", placeholder="例: 本編：未定、ナレ：21:30頃", key="multi_handover_t")
+            schedule_handover_text = f"{format_date_jp(date_handover)} {time_handover}".strip()
+
+            # 作業予定日（複数日対応）
+            st.caption("作業予定日（1日目および2日目の指定）:")
+            col_w1, col_w2 = st.columns([3, 2])
+            with col_w1:
+                date_work1 = st.date_input("作業日1", value=today + datetime.timedelta(days=1), key="m_work1_d")
+            with col_w2:
+                time_work1 = st.selectbox("時間帯1", work_time_options, key="m_work1_t")
+
+            work_parts = [f"{format_date_jp(date_work1)} {time_work1}"]
+            use_work_day2 = st.checkbox("作業予定日（2日目）も指定する", value=True, key="chk_work2")
+            if use_work_day2:
+                col_w2_1, col_w2_2 = st.columns([3, 2])
+                with col_w2_1:
+                    date_work2 = st.date_input("作業日2", value=today + datetime.timedelta(days=3), key="m_work2_d")
+                with col_w2_2:
+                    time_work2 = st.selectbox("時間帯2", work_time_options, index=1, key="m_work2_t")
+                work_parts.append(f"{format_date_jp(date_work2)} {time_work2}")
+            schedule_work_text = "、".join(work_parts)
+
+            # 除外チェック
+            col_chk1, col_chk2, col_chk3 = st.columns(3)
+            with col_chk1:
+                use_del = st.checkbox("納期を含める", value=True, key="m_use_del")
+            with col_chk2:
+                use_han = st.checkbox("搬入日を含める", value=True, key="m_use_han")
+            with col_chk3:
+                use_wrk = st.checkbox("作業日を含める", value=True, key="m_use_wrk")
+
+            if not use_del:
+                schedule_delivery_text = ""
+            if not use_han:
+                schedule_handover_text = ""
+            if not use_wrk:
+                schedule_work_text = ""
+
+        elif "カレンダーから選ぶ" in schedule_mode or "まとめて一括指定" in schedule_mode:
             col_d1, col_d2 = st.columns([3, 2])
             with col_d1:
-                date_delivery = st.date_input("ご希望納期の日付", value=today + datetime.timedelta(days=3))
+                date_delivery = st.date_input("ご希望納期の日付", value=today + datetime.timedelta(days=3), key="single_del_d")
             with col_d2:
-                time_delivery = st.selectbox(
-                    "納期の時間帯",
-                    ["中（終日）", "夕方まで", "午前中", "23:59まで", "18:00まで", "要相談"],
-                    key="time_del"
-                )
+                time_delivery = st.selectbox("納期の時間帯", time_options, key="single_del_t")
             schedule_delivery_text = f"{format_date_jp(date_delivery)} {time_delivery}"
 
             col_h1, col_h2 = st.columns([3, 2])
             with col_h1:
-                date_handover = st.date_input("データご搬入の日付", value=today + datetime.timedelta(days=1))
+                date_handover = st.date_input("データご搬入の日付", value=today + datetime.timedelta(days=1), key="single_han_d")
             with col_h2:
-                time_handover = st.text_input("搬入の時間帯・詳細", value="21:30ごろ", placeholder="例: 21:30ごろ、夜、午前中")
+                time_handover = st.text_input("搬入の時間帯・詳細", value="21:30ごろ", placeholder="例: 21:30ごろ、夜、午前中", key="single_han_t")
             schedule_handover_text = f"{format_date_jp(date_handover)} {time_handover}".strip()
 
             col_w1, col_w2 = st.columns([3, 2])
             with col_w1:
-                date_work = st.date_input("作業予定日の日付", value=today + datetime.timedelta(days=1))
+                date_work = st.date_input("作業予定日の日付", value=today + datetime.timedelta(days=1), key="single_work_d")
             with col_w2:
-                time_work = st.selectbox(
-                    "作業予定の時間帯",
-                    ["夜", "夕方以降", "終日", "午前中", "午後", "深夜"],
-                    key="time_work"
-                )
-            schedule_work_text = f"{format_date_jp(date_work)} {time_work}"
+                time_work = st.selectbox("作業予定の時間帯", work_time_options, key="single_work_t")
+
+            work_parts = [f"{format_date_jp(date_work)} {time_work}"]
+            use_work_extra = st.checkbox("作業予定日（2日目）も指定する", value=False, key="single_work_extra")
+            if use_work_extra:
+                col_w_ex1, col_w_ex2 = st.columns([3, 2])
+                with col_w_ex1:
+                    date_work_ex = st.date_input("作業日2", value=today + datetime.timedelta(days=3), key="s_work_ex_d")
+                with col_w_ex2:
+                    time_work_ex = st.selectbox("時間帯2", work_time_options, index=1, key="s_work_ex_t")
+                work_parts.append(f"{format_date_jp(date_work_ex)} {time_work_ex}")
+            schedule_work_text = "、".join(work_parts)
 
             col_chk1, col_chk2, col_chk3 = st.columns(3)
             with col_chk1:
-                use_delivery = st.checkbox("納期を含める", value=True)
+                use_delivery = st.checkbox("納期を含める", value=True, key="s_chk_del")
             with col_chk2:
-                use_handover = st.checkbox("搬入日を含める", value=True)
+                use_handover = st.checkbox("搬入日を含める", value=True, key="s_chk_han")
             with col_chk3:
-                use_work = st.checkbox("作業日を含める", value=True)
+                use_work = st.checkbox("作業日を含める", value=True, key="s_chk_wrk")
 
             if not use_delivery:
                 schedule_delivery_text = ""
@@ -464,20 +536,24 @@ with tab1:
                 schedule_work_text = ""
 
         else:
+            # 自由入力モード
             schedule_delivery_text = st.text_input(
                 "ご希望納期",
                 value="1本目：11/3（火）中、2本目：11/10（火）まで",
-                placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで"
+                placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで",
+                key="free_delivery_input"
             )
             schedule_handover_text = st.text_input(
                 "データご搬入",
                 value="本編：未定、ナレ：11/2（月）21:30ごろ",
-                placeholder="例: 本編：未定、ナレ：11/2（月）21:30ごろ"
+                placeholder="例: 本編：未定、ナレ：11/2（月）21:30ごろ",
+                key="free_handover_input"
             )
             schedule_work_text = st.text_input(
                 "作業予定日",
                 value="11/2（月）夜、11/4 夕方以降",
-                placeholder="例: 11/2（月）夜、11/4 夕方以降"
+                placeholder="例: 11/2（月）夜、11/4 夕方以降",
+                key="free_work_input"
             )
 
         st.markdown("**スケジュールの確保状況（相手に合わせて選択）**")
