@@ -147,7 +147,12 @@ def render_schedule_inputs(
         day_num = idx + 1
         day_label = f"作業日（{day_num}日目）" if len(w_ids) > 1 else "作業予定日"
 
-        c_w1, c_w2, c_w3 = st.columns([3, 2, 1] if len(w_ids) > 1 else [3, 2])
+        if len(w_ids) > 1:
+            c_w1, c_w2, c_w3 = st.columns([3, 2, 1])
+        else:
+            c_w1, c_w2 = st.columns([3, 2])
+            c_w3 = None
+
         with c_w1:
             w_date = st.date_input(
                 day_label,
@@ -162,7 +167,7 @@ def render_schedule_inputs(
                 index=def_t_idx,
                 key=f"w_time_{item_key}_{w_id}"
             )
-        if len(w_ids) > 1:
+        if c_w3 is not None:
             with c_w3:
                 st.write("")
                 st.write("")
