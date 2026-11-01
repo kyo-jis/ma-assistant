@@ -286,21 +286,24 @@ with tab1:
                 placeholder="例: 11/2（月）夜、11/4 夕方以降"
             )
 
-        # スケジュールに関する注記設定
-        st.markdown("**スケジュールに関する注記（トラブル防止・早期確定の促進）**")
-        col_note1, col_note2 = st.columns(2)
-        with col_note1:
-            include_first_come_note = st.checkbox(
-                "作業枠の仮押さえ不可・先着順の注記を含める",
-                value=True,
-                help="「作業予定日は現時点の目安となり、正式ご購入の先着順で確定します」という案内です。"
-            )
-        with col_note2:
-            include_delay_note = st.checkbox(
-                "搬入遅延に関する注記を含める",
-                value=True,
-                help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
-            )
+        # スケジュール確保状況（通常 vs お得意様）
+        st.markdown("**スケジュールの確保状況（相手に合わせて選択）**")
+        schedule_reservation_type = st.radio(
+            "スケジュールの案内トーン",
+            [
+                "⚡ 先着順（新規・通常向け）",
+                "🤝 仮確保中（お得意様・リピーター向け）",
+                "なし（記載しない）"
+            ],
+            horizontal=True,
+            help="お得意様には「枠をキープしています」、新規の方には「先着順です」と適切なトーンで伝えます。"
+        )
+
+        include_delay_note = st.checkbox(
+            "搬入遅延に関する注記を含める",
+            value=True,
+            help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
+        )
 
         # 納品仕様・音声レベル設定
         st.markdown("---")
@@ -429,8 +432,11 @@ with tab1:
 
         # スケジュール注記
         schedule_notes = []
-        if include_first_come_note:
+        if schedule_reservation_type == "⚡ 先着順（新規・通常向け）":
             schedule_notes.append("※作業予定日は現時点の空き状況に基づく目安となります。スケジュールの仮押さえは行っておりませんので、正式なご依頼（ご購入）の先着順にて確定とさせていただきます。万が一他案件で枠が埋まってしまった場合は、日程の再調整（またはご辞退）をご相談させていただく場合がございます。")
+        elif schedule_reservation_type == "🤝 仮確保中（お得意様・リピーター向け）":
+            schedule_notes.append("※上記日程にて作業枠を仮確保（キープ）しております。素材のご準備状況やスケジュールの変更などがございましたら、柔軟に調整いたしますのでいつでもお気軽にご相談ください。")
+
         if include_delay_note:
             schedule_notes.append("※データご搬入が予定より遅れた場合、納期が後ろ倒しになる可能性がございます。")
 
@@ -476,15 +482,21 @@ with tab1:
 
         # パターン2: シンプル（チャット・即答用）
         simple_sched = f"\n・希望納期: {schedule_delivery_text.strip()}" if schedule_delivery_text.strip() else ""
+        if schedule_reservation_type == "⚡ 先着順（新規・通常向け）":
+            simple_sched_note = "\n※スケジュールは正式ご依頼の先着順で確定となります。"
+        elif schedule_reservation_type == "🤝 仮確保中（お得意様・リピーター向け）":
+            simple_sched_note = "\n※取り急ぎ上記日程で作業枠を仮確保しております！"
+        else:
+            simple_sched_note = ""
+
         quote_msg_simple = f"""{client_display}
 お世話になっております！
 ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
 
 【お見積り】
 ・ジャンル: {selected_genre}（{detail_text}）
-・お見積金額: {price_label}{simple_sched}
+・お見積金額: {price_label}{simple_sched}{simple_sched_note}
 
-※スケジュールは正式ご依頼の先着順で確定となります。
 仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！"""
 
         # パターン3: ビジネスメール・詳細版
