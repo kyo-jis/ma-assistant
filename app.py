@@ -57,9 +57,6 @@ def save_custom_programs(programs: list[dict]):
 if "duration_minutes" not in st.session_state:
     st.session_state.duration_minutes = 15.0
 
-def set_duration(minutes: float):
-    st.session_state.duration_minutes = float(minutes)
-
 def add_duration(diff: float):
     current = st.session_state.get("duration_minutes", 15.0)
     new_val = max(1.0, min(300.0, current + diff))
@@ -118,59 +115,46 @@ st.markdown("""
 # ==========================================
 # 計算ロジック
 # ==========================================
-def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, str]:
+def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, float]:
     """
     YouTube・配信 / 番組 / ドラマ・自主映画 の補間計算を行う関数
     YouTube・番組基準:
-      5分 = 6,000円
-      15分 = 9,000円  (傾き 300円/分)
-      30分 = 12,000円 (傾き 200円/分)
-      60分 = 24,000円 (傾き 400円/分)
+      5分 = 6,000円  (2.0時間)
+      15分 = 9,000円 (3.0時間)
+      30分 = 12,000円 (4.0時間)
+      60分 = 24,000円 (8.0時間)
       60分超 = 400円/分で外挿
     ドラマ・自主映画は上記の2倍
+    戻り値: (基本金額, 想定作業時間)
     """
     factor = 2 if is_drama else 1
 
-    # ミニマムチャージ（5分以内）
     if minutes <= 5:
         base_price = 6000 * factor
-        formula_detail = f"基本料金（5分以内）: {base_price:,}円"
-        return base_price, formula_detail
-
-    # 5分超〜15分以内
-    if minutes <= 15:
+    elif minutes <= 15:
         rate = 300 * factor
         base = 6000 * factor
         diff = minutes - 5
-        price = base + diff * rate
-        formula_detail = f"5分基準({base:,}円) + 追加{diff:.1f}分 × {rate:,}円/分 = {int(round(price)):,}円"
-        return int(round(price)), formula_detail
-
-    # 15分超〜30分以内
-    if minutes <= 30:
+        base_price = int(round(base + diff * rate))
+    elif minutes <= 30:
         rate = 200 * factor
         base = 9000 * factor
         diff = minutes - 15
-        price = base + diff * rate
-        formula_detail = f"15分基準({base:,}円) + 追加{diff:.1f}分 × {rate:,}円/分 = {int(round(price)):,}円"
-        return int(round(price)), formula_detail
-
-    # 30分超〜60分以内
-    if minutes <= 60:
+        base_price = int(round(base + diff * rate))
+    elif minutes <= 60:
         rate = 400 * factor
         base = 12000 * factor
         diff = minutes - 30
-        price = base + diff * rate
-        formula_detail = f"30分基準({base:,}円) + 追加{diff:.1f}分 × {rate:,}円/分 = {int(round(price)):,}円"
-        return int(round(price)), formula_detail
+        base_price = int(round(base + diff * rate))
+    else:
+        rate = 400 * factor
+        base = 24000 * factor
+        diff = minutes - 60
+        base_price = int(round(base + diff * rate))
 
-    # 60分超（補間・外挿）
-    rate = 400 * factor
-    base = 24000 * factor
-    diff = minutes - 60
-    price = base + diff * rate
-    formula_detail = f"60分基準({base:,}円) + 超過{diff:.1f}分 × {rate:,}円/分 = {int(round(price)):,}円"
-    return int(round(price)), formula_detail
+    # 作業時間目安（1時間3,000円換算）
+    base_hours = round(base_price / 3000.0, 1)
+    return base_price, base_hours
 
 
 # ==========================================
@@ -210,7 +194,7 @@ with tab1:
         duration_val = 0.0
         cm_pattern = "通常"
         cm_count = 1
-        work_hours = 1.0
+        work_hours_custom = 1.0
 
         # 固定単価番組用変数
         fixed_prog_name = ""
@@ -220,20 +204,6 @@ with tab1:
         # 条件付き入力項目
         if selected_genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
             st.markdown("**尺の入力（分単位）**")
-
-            # よくある尺のワンタップ選択ボタン
-            st.caption("よくある尺をワンタップで選択:")
-            p_cols = st.columns(7)
-            preset_list = [5, 10, 15, 20, 30, 45, 60]
-            for i, p_val in enumerate(preset_list):
-                with p_cols[i]:
-                    st.button(
-                        f"{p_val}分",
-                        key=f"btn_p_{p_val}",
-                        on_click=set_duration,
-                        args=(float(p_val),),
-                        use_container_width=True
-                    )
 
             # 増減ステップ設定 & 数値入力
             col_num, col_step_type = st.columns([3, 2])
@@ -260,6 +230,44 @@ with tab1:
                 st.button("+5分 ▶", on_click=add_duration, args=(5.0,), use_container_width=True)
             with b_c4:
                 st.button("+10分 ⏩", on_click=add_duration, args=(10.0,), use_container_width=True)
+
+            # --- 作業時間目安 & 収録状況による工数補正 ---
+            is_drama_genre = (selected_genre == "ドラマ・自主映画")
+            base_calc_price, base_calc_hours = calc_duration_price(duration_val, is_drama=is_drama_genre)
+
+            st.markdown("---")
+            st.markdown("##### ⏱️ 作業時間目安 ＆ 収録状況による工数調整")
+            st.caption("尺から算出した標準作業時間をベースに、素材のノイズや収録状態に応じた調整を行えます。")
+
+            col_h_info, col_h_adj = st.columns([2, 3])
+            with col_h_info:
+                st.metric("尺ベースの基準作業時間", f"約 {base_calc_hours:.1f} 時間", help="1時間あたり3,000円換算の基準値です。")
+
+            with col_h_adj:
+                condition_options = [
+                    "標準（収録状態良好 / 調整なし: ±0h）",
+                    "ノイズやや多め・整音あり（+0.5h / +1,500円）",
+                    "ノイズ多め・要高度整音（+1.0h / +3,000円）",
+                    "素材難度高（音割れ・別録りズレ等）（+2.0h / +6,000円）",
+                    "簡易作業・素材良好（-0.5h / -1,500円）",
+                    "手動で直接指定する"
+                ]
+                selected_condition = st.selectbox("収録状況・素材状態", condition_options)
+
+            # 工数補正の計算
+            adj_hours = 0.0
+            if "手動で直接指定する" in selected_condition:
+                final_work_hours = st.number_input("合計作業時間（時間）", min_value=0.5, max_value=50.0, value=base_calc_hours, step=0.5)
+            else:
+                if "+0.5h" in selected_condition:
+                    adj_hours = 0.5
+                elif "+1.0h" in selected_condition:
+                    adj_hours = 1.0
+                elif "+2.0h" in selected_condition:
+                    adj_hours = 2.0
+                elif "-0.5h" in selected_condition:
+                    adj_hours = -0.5
+                final_work_hours = max(0.5, base_calc_hours + adj_hours)
 
         elif selected_genre == "CM（15秒・30秒）":
             cm_pattern = st.radio(
@@ -303,11 +311,10 @@ with tab1:
                 with col_add_price:
                     new_prog_price = st.number_input("単価（円/本）", min_value=500, max_value=100000, value=3000, step=500, key="new_p_price")
                 with col_add_btn:
-                    st.write("")  # レイアウト調整
+                    st.write("")
                     st.write("")
                     if st.button("➕ 登録する", use_container_width=True):
                         if new_prog_name.strip():
-                            # 重複チェック
                             existing_names = [p["name"] for p in custom_programs]
                             if new_prog_name.strip() in existing_names:
                                 st.warning("既に同名の番組が登録されています。")
@@ -319,7 +326,6 @@ with tab1:
                         else:
                             st.warning("番組名を入力してください。")
 
-                # 登録済み番組の一覧と削除
                 st.markdown("##### 📋 現在登録済みの番組一覧")
                 if not custom_programs:
                     st.caption("登録済みの番組はありません。")
@@ -336,7 +342,7 @@ with tab1:
                                 st.rerun()
 
         elif selected_genre == "その他（作業時間計算）":
-            work_hours = st.number_input(
+            work_hours_custom = st.number_input(
                 "作業時間（時間単位）",
                 min_value=0.5,
                 max_value=200.0,
@@ -476,6 +482,13 @@ with tab1:
                     help="作品の構成や音割れ・ノイズ浮き防止のため、最適な聴きやすさ（-15〜-16 LUFS前後）を優先する旨の案内です。"
                 )
 
+            # 素材状態に関する事前防衛注記
+            include_raw_audio_note = st.checkbox(
+                "素材状態に関する事前注記を含める（ノイズ過多時の再見積もり予防線）",
+                value=True,
+                help="一般的な収録状態を想定した見積もりであり、ノイズが極端に多い場合は再見積もり相談となる旨の事前注記です。"
+            )
+
             audio_format = st.selectbox(
                 "納品フォーマット",
                 [
@@ -509,7 +522,7 @@ with tab1:
 
         with st.expander("ℹ️ 料金テーブルの確認（基準レート）"):
             st.markdown("""
-            | ジャンル | 5分 | 15分 | 30分 | 60分 | 補間レート |
+            | ジャンル | 5分 (約2h) | 15分 (約3h) | 30分 (約4h) | 60分 (約8h) | 補間レート |
             | :--- | :--- | :--- | :--- | :--- | :--- |
             | **YouTube・配信** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
             | **番組** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
@@ -526,26 +539,28 @@ with tab1:
     breakdown_text = ""
     genre_display_name = selected_genre
 
-    if selected_genre in ["YouTube・配信", "番組"]:
-        price_base, breakdown_text = calc_duration_price(duration_val, is_drama=False)
-        detail_text = f"{duration_val:.1f}分"
-    elif selected_genre == "ドラマ・自主映画":
-        price_base, breakdown_text = calc_duration_price(duration_val, is_drama=True)
-        detail_text = f"{duration_val:.1f}分"
+    if selected_genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
+        # 最終作業時間から金額を計算（1時間3,000円換算）
+        price_base = int(round(final_work_hours * 3000))
+        detail_text = f"{duration_val:.1f}分動画 MA作業一式（想定工数：約{final_work_hours:.1f}時間）"
+        breakdown_text = f"{duration_val:.1f}分（想定作業 約{final_work_hours:.1f}時間 × 3,000円/時間）= {price_base:,}円"
+
     elif selected_genre == "CM（15秒・30秒）":
         unit_price = 2000 if cm_pattern == "お得意様" else 3000
         price_base = unit_price * cm_count
         detail_text = f"{cm_pattern}パターン（{unit_price:,}円/本）× {cm_count}本"
         breakdown_text = f"単価 {unit_price:,}円 × {cm_count}本 = {price_base:,}円"
+
     elif selected_genre == "固定単価・レギュラー番組":
         genre_display_name = f"固定単価番組（{fixed_prog_name}）"
         price_base = fixed_prog_price * fixed_prog_count
         detail_text = f"単価 {fixed_prog_price:,}円/本 × {fixed_prog_count}本"
         breakdown_text = f"{fixed_prog_price:,}円 × {fixed_prog_count}本 = {price_base:,}円"
+
     elif selected_genre == "その他（作業時間計算）":
-        price_base = int(round(work_hours * 3000))
-        detail_text = f"{work_hours:.1f} 時間（3,000円/時間）"
-        breakdown_text = f"3,000円 × {work_hours:.1f}時間 = {price_base:,}円"
+        price_base = int(round(work_hours_custom * 3000))
+        detail_text = f"{work_hours_custom:.1f} 時間（3,000円/時間）"
+        breakdown_text = f"3,000円 × {work_hours_custom:.1f}時間 = {price_base:,}円"
 
     # 税計算
     if tax_option == "税込（10%）":
@@ -620,6 +635,10 @@ with tab1:
         if include_rework_fee_note:
             spec_lines.append("※大幅な素材の差し替え、新規ナレーションの追加、構成変更等に伴う再作業は、別途追加作業費（3,000円/時間）のご相談とさせていただきます。")
 
+        raw_audio_note_text = ""
+        if include_raw_audio_note and selected_genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
+            raw_audio_note_text = "\n※上記は一般的な収録状態を想定したお見積りとなります。ノイズが極端に多い場合や極度の音割れ・部屋鳴り等の高度な修復を要する場合は、素材確認後に作業工数に応じた再お見積りをご相談させていただく場合がございます。\n"
+
         spec_block = "■ 納品データの仕様・修正規定\n" + "\n".join(spec_lines)
 
         # パターン1: ココナラ・クラウドソーシング特化型
@@ -631,7 +650,7 @@ with tab1:
 ■ お見積り金額
 合計： {price_label}
 （内訳：{genre_display_name} {detail_text}）
-
+{raw_audio_note_text}
 {schedule_block}{spec_block}
 
 ■ 主な作業内容
@@ -675,7 +694,7 @@ with tab1:
 ・詳細 / 尺   : {detail_text}
 ・お見積り金額 : {price_label}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+{raw_audio_note_text}
 {schedule_block}{spec_block}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
