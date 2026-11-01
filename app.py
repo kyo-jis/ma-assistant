@@ -19,6 +19,17 @@ def format_date_jp(d: datetime.date) -> str:
     weekday = WEEKDAY_JP[d.weekday()]
     return f"{d.month}/{d.day}（{weekday}）"
 
+# セッションステート初期化（尺の入力用）
+if "duration_val" not in st.session_state:
+    st.session_state.duration_val = 15.0
+
+def set_duration(minutes: float):
+    st.session_state.duration_val = float(minutes)
+
+def add_duration(diff: float):
+    new_val = max(1.0, min(300.0, st.session_state.duration_val + diff))
+    st.session_state.duration_val = float(new_val)
+
 # カスタムCSS
 st.markdown("""
 <style>
@@ -169,14 +180,44 @@ with tab1:
 
         # 条件付き入力項目
         if selected_genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
-            duration_val = st.number_input(
-                "尺の入力（分単位）",
-                min_value=1.0,
-                max_value=300.0,
-                value=15.0,
-                step=1.0,
-                help="※5分未満は基本料金（5分基準）となります。60分超は補間（外挿）計算されます。"
-            )
+            st.markdown("**尺の入力（分単位）**")
+
+            # よくある尺のワンタップ選択ボタン
+            st.caption("よくある尺をワンタップで選択:")
+            p_cols = st.columns(7)
+            preset_list = [5, 10, 15, 20, 30, 45, 60]
+            for i, p_val in enumerate(preset_list):
+                with p_cols[i]:
+                    st.button(f"{p_val}分", key=f"btn_p_{p_val}", on_click=set_duration, args=(float(p_val),), use_container_width=True)
+
+            # 増減ステップ設定 & 数値入力
+            col_num, col_step_type = st.columns([3, 2])
+            with col_step_type:
+                step_unit = st.radio("＋／－ の増減単位", [5.0, 10.0, 1.0], format_func=lambda x: f"{int(x)}分単位", horizontal=True)
+
+            with col_num:
+                duration_val = st.number_input(
+                    "尺（分）",
+                    min_value=1.0,
+                    max_value=300.0,
+                    value=st.session_state.duration_val,
+                    step=step_unit,
+                    key="duration_input_field",
+                    help="※5分未満は基本料金（5分基準）となります。60分超は補間（外挿）計算されます。"
+                )
+                # number_inputの手動変更をセッションステートに同期
+                st.session_state.duration_val = duration_val
+
+            # クイック加算・減算ボタン
+            b_c1, b_c2, b_c3, b_c4 = st.columns(4)
+            with b_c1:
+                st.button("⏪ -10分", on_click=add_duration, args=(-10.0,), use_container_width=True)
+            with b_c2:
+                st.button("◀ -5分", on_click=add_duration, args=(-5.0,), use_container_width=True)
+            with b_c3:
+                st.button("+5分 ▶", on_click=add_duration, args=(5.0,), use_container_width=True)
+            with b_c4:
+                st.button("+10分 ⏩", on_click=add_duration, args=(10.0,), use_container_width=True)
 
         elif selected_genre == "CM（15秒・30秒）":
             cm_pattern = st.radio(
