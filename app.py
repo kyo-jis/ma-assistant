@@ -658,9 +658,31 @@ with tab1:
             help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
         )
 
-        # 納品仕様・音声レベル設定
+        # 納品仕様・作業内容・音声レベル設定
         st.markdown("---")
-        with st.expander("🎚️ 納品仕様・音声レベル設定（ココナラ・プロ向け仕様）", expanded=True):
+        with st.expander("🎚️ 納品仕様・作業内容・音声レベル設定", expanded=True):
+            st.markdown("##### 🛠️ 主な作業内容の選択")
+            include_work_contents = st.checkbox("メッセージに「主な作業内容」を含める", value=True, key="chk_inc_work_contents")
+
+            c_task1 = True
+            c_task2 = True
+            c_task3 = True
+            c_task4 = True
+            c_custom_task = ""
+
+            if include_work_contents:
+                t_col1, t_col2 = st.columns(2)
+                with t_col1:
+                    c_task1 = st.checkbox("ノイズ除去", value=True, key="chk_task1", help="リップノイズ・部屋鳴り・環境音の低減")
+                    c_task2 = st.checkbox("音量・音圧調整", value=True, key="chk_task2", help="ラウドネス規準準拠のバランス調整")
+                with t_col2:
+                    c_task3 = st.checkbox("BGM・効果音MA", value=True, key="chk_task3", help="BGM・効果音（SE）のMA処理・整音ミックス")
+                    c_task4 = st.checkbox("マスタリング・書出", value=True, key="chk_task4", help="マスタリングおよび指定フォーマットでの書き出し")
+
+                c_custom_task = st.text_input("追加の作業内容（任意）", placeholder="例: テロップ合わせ、BGM選定 など", key="txt_custom_task")
+
+            st.markdown("---")
+            st.markdown("##### 🎚️ 音声仕様・修正規定")
             audio_spec = st.selectbox(
                 "音声レベル（ラウドネス規準）",
                 [
@@ -870,6 +892,38 @@ with tab1:
             detail_items_text = "\n" + "\n".join(detail_lines)
             simple_items_summary = f"{len(items_calculation_results)}件合算（{items_calculation_results[0]['genre']} ほか）"
 
+        # 主な作業内容ブロック作成
+        work_block_coconala = ""
+        work_block_detailed = ""
+
+        if include_work_contents:
+            tasks_coconala = []
+            tasks_detailed = []
+
+            if c_task1:
+                tasks_coconala.append("・ノイズ除去（リップノイズ・部屋鳴り・環境音の低減）")
+                tasks_detailed.append("音声素材のノイズ低減（リップノイズ・空調音・ヒスノイズ除去）")
+            if c_task2:
+                tasks_coconala.append("・音量・音圧バランス調整（ラウドネス規準準拠）")
+                tasks_detailed.append("話者ごとの音量・声質バランスの調整（EQ・コンプレッサー処理）")
+            if c_task3:
+                tasks_coconala.append("・BGM・効果音（SE）のMA処理・整音ミックス")
+                tasks_detailed.append("BGM・SE（効果音）の配置および適切なダッキング処理")
+            if c_task4:
+                tasks_coconala.append("・マスタリングおよび指定フォーマットでの書き出し")
+                tasks_detailed.append("規定ラウドネス値に合わせた最終マスタリング")
+            if c_custom_task.strip():
+                tasks_coconala.append(f"・{c_custom_task.strip()}")
+                tasks_detailed.append(c_custom_task.strip())
+
+            if tasks_coconala:
+                work_block_coconala = "■ 主な作業内容\n" + "\n".join(tasks_coconala)
+            if tasks_detailed:
+                work_block_detailed = "━━━━━━━━━━━━━━━━━━━━━━━━━━\n【作業工程・内容】\n" + "\n".join([f"{i+1}. {t}" for i, t in enumerate(tasks_detailed)])
+
+        coconala_work_part = f"\n\n{work_block_coconala}\n" if work_block_coconala else ""
+        detailed_work_part = f"\n\n{work_block_detailed}" if work_block_detailed else ""
+
         # パターン1: ココナラ・クラウドソーシング特化型
         quote_msg_coconala = f"""{client_display}
 
@@ -880,14 +934,7 @@ with tab1:
 合計： {price_label}
 {detail_items_text}
 {raw_audio_note_text}
-{schedule_block}{spec_block}
-
-■ 主な作業内容
-・ノイズ除去（リップノイズ・部屋鳴り・環境音の低減）
-・音量・音圧バランス調整（ラウドネス規準準拠）
-・BGM・効果音（SE）のMA処理・整音ミックス
-・マスタリングおよび指定フォーマットでの書き出し
-
+{schedule_block}{spec_block}{coconala_work_part}
 上記スケジュールおよび内容で問題ございませんでしたら、いつでも正式にご依頼いただけますと幸いです。
 ご不明点やご予算・日程のご相談がございましたら、柔軟に対応いたしますのでお気軽にお申し付けください。
 何卒よろしくお願い申し上げます。"""
@@ -923,15 +970,9 @@ with tab1:
 {detail_items_text}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 {raw_audio_note_text}
-{schedule_block}{spec_block}
+{schedule_block}{spec_block}{detailed_work_part}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-【作業工程・内容】
-1. 音声素材のノイズ低減（リップノイズ・空調音・ヒスノイズ除去）
-2. 話者ごとの音量・声質バランスの調整（EQ・コンプレッサー処理）
-3. BGM・SE（効果音）の配置および適切なダッキング処理
-4. 規定ラウドネス値に合わせた最終マスタリング
-
 スケジュール等につきまして、調整のご要望がございましたらお申し付けくださいませ。
 ご検討のほど、何卒よろしくお願い申し上げます。"""
 
