@@ -1,4 +1,6 @@
 import datetime
+import json
+import os
 import streamlit as st
 
 # ==========================================
@@ -19,7 +21,39 @@ def format_date_jp(d: datetime.date) -> str:
     weekday = WEEKDAY_JP[d.weekday()]
     return f"{d.month}/{d.day}（{weekday}）"
 
-# セッションステート初期化（尺の入力用キーを統一）
+# ==========================================
+# 固定単価番組（マスタデータ）の読み書き
+# ==========================================
+PROGRAMS_FILE = os.path.join(os.path.dirname(__file__), "custom_programs.json")
+
+def load_custom_programs() -> list[dict]:
+    default_programs = [
+        {"name": "中島知子のおんせんさんぽ", "price": 3000}
+    ]
+    if not os.path.exists(PROGRAMS_FILE):
+        try:
+            with open(PROGRAMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_programs, f, ensure_ascii=False, indent=2)
+        except Exception:
+            return default_programs
+        return default_programs
+    try:
+        with open(PROGRAMS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            return default_programs
+    except Exception:
+        return default_programs
+
+def save_custom_programs(programs: list[dict]):
+    try:
+        with open(PROGRAMS_FILE, "w", encoding="utf-8") as f:
+            json.dump(programs, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"番組データの保存に失敗しました: {e}")
+
+# セッションステート初期化（尺の入力用キー）
 if "duration_minutes" not in st.session_state:
     st.session_state.duration_minutes = 15.0
 
@@ -162,13 +196,13 @@ with tab1:
         client_name = st.text_input("クライアント名（任意）", placeholder="例: 〇〇 様")
         project_title = st.text_input("案件名・動画タイトル（任意）", placeholder="例: YouTube対談企画 MA作業")
 
-        # 1. 案件ジャンル（「YouTube・配信」と「番組」を分割）
+        # 1. 案件ジャンル
         genres = [
             "YouTube・配信",
             "番組",
             "ドラマ・自主映画",
             "CM（15秒・30秒）",
-            "中島知子のおんせんさんぽ",
+            "固定単価・レギュラー番組",
             "その他（作業時間計算）"
         ]
         selected_genre = st.selectbox("案件のジャンル", genres)
@@ -176,8 +210,12 @@ with tab1:
         duration_val = 0.0
         cm_pattern = "通常"
         cm_count = 1
-        onsen_count = 1
         work_hours = 1.0
+
+        # 固定単価番組用変数
+        fixed_prog_name = ""
+        fixed_prog_price = 3000
+        fixed_prog_count = 1
 
         # 条件付き入力項目
         if selected_genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
@@ -203,7 +241,6 @@ with tab1:
                 step_unit = st.radio("＋／－ の増減単位", [5.0, 10.0, 1.0], format_func=lambda x: f"{int(x)}分単位", horizontal=True)
 
             with col_num:
-                # key="duration_minutes" にバインド（value引数を外すことでセッションステートと完全同期）
                 duration_val = st.number_input(
                     "尺（分）",
                     min_value=1.0,
@@ -233,9 +270,70 @@ with tab1:
             )
             cm_count = st.number_input("制作本数", min_value=1, max_value=100, value=1, step=1)
 
-        elif selected_genre == "中島知子のおんせんさんぽ":
-            st.info("💡 1本固定 3,000円 です。")
-            onsen_count = st.number_input("本数", min_value=1, max_value=100, value=1, step=1)
+        elif selected_genre == "固定単価・レギュラー番組":
+            custom_programs = load_custom_programs()
+
+            # 選択肢リスト
+            prog_options = [f"{p['name']}（{p['price']:,}円/本）" for p in custom_programs]
+            prog_options.append("＋ 新規・一時入力（登録せず直接入力）")
+
+            chosen_prog = st.selectbox("登録済み番組の選択", prog_options)
+
+            if chosen_prog == "＋ 新規・一時入力（登録せず直接入力）":
+                col_n1, col_n2 = st.columns([3, 2])
+                with col_n1:
+                    fixed_prog_name = st.text_input("番組名・案件名", value="レギュラー番組", placeholder="例: 〇〇番組")
+                with col_n2:
+                    fixed_prog_price = st.number_input("1本あたりの単価（円）", min_value=500, max_value=100000, value=3000, step=500)
+            else:
+                idx = prog_options.index(chosen_prog)
+                target_prog = custom_programs[idx]
+                fixed_prog_name = target_prog["name"]
+                fixed_prog_price = target_prog["price"]
+                st.info(f"💡 「{fixed_prog_name}」: 1本固定 {fixed_prog_price:,}円 です。")
+
+            fixed_prog_count = st.number_input("制作本数", min_value=1, max_value=100, value=1, step=1)
+
+            # 番組の登録・削除管理エリア
+            with st.expander("⚙️ 番組マスタの登録・削除（一覧管理）"):
+                st.caption("よく受ける番組やレギュラー案件を登録しておくと、上の選択肢からいつでも選べるようになります。")
+                col_add_name, col_add_price, col_add_btn = st.columns([3, 2, 2])
+                with col_add_name:
+                    new_prog_name = st.text_input("新しい番組名", placeholder="例: 〇〇チャンネル", key="new_p_name")
+                with col_add_price:
+                    new_prog_price = st.number_input("単価（円/本）", min_value=500, max_value=100000, value=3000, step=500, key="new_p_price")
+                with col_add_btn:
+                    st.write("")  # レイアウト調整
+                    st.write("")
+                    if st.button("➕ 登録する", use_container_width=True):
+                        if new_prog_name.strip():
+                            # 重複チェック
+                            existing_names = [p["name"] for p in custom_programs]
+                            if new_prog_name.strip() in existing_names:
+                                st.warning("既に同名の番組が登録されています。")
+                            else:
+                                custom_programs.append({"name": new_prog_name.strip(), "price": int(new_prog_price)})
+                                save_custom_programs(custom_programs)
+                                st.success(f"「{new_prog_name.strip()}」を登録しました！")
+                                st.rerun()
+                        else:
+                            st.warning("番組名を入力してください。")
+
+                # 登録済み番組の一覧と削除
+                st.markdown("##### 📋 現在登録済みの番組一覧")
+                if not custom_programs:
+                    st.caption("登録済みの番組はありません。")
+                else:
+                    for i, p in enumerate(custom_programs):
+                        c_info, c_del = st.columns([4, 1])
+                        with c_info:
+                            st.write(f"・ **{p['name']}**: {p['price']:,} 円 / 本")
+                        with c_del:
+                            if st.button("🗑️ 削除", key=f"del_prog_{i}", use_container_width=True):
+                                custom_programs.pop(i)
+                                save_custom_programs(custom_programs)
+                                st.success(f"「{p['name']}」を削除しました。")
+                                st.rerun()
 
         elif selected_genre == "その他（作業時間計算）":
             work_hours = st.number_input(
@@ -355,7 +453,7 @@ with tab1:
         st.markdown("---")
         with st.expander("🎚️ 納品仕様・音声レベル設定（ココナラ・プロ向け仕様）", expanded=True):
             # ジャンルに応じたデフォルトインデックスの選定
-            default_spec_idx = 1 if selected_genre == "YouTube・配信" else 0
+            default_spec_idx = 1 if selected_genre in ["YouTube・配信"] else 0
 
             audio_spec = st.selectbox(
                 "音声レベル（ラウドネス規準）",
@@ -389,7 +487,7 @@ with tab1:
                 ]
             )
 
-            # 修正規定（無制限リスクを排除した安全な選択肢）
+            # 修正規定
             retake_policy = st.selectbox(
                 "修正対応の規定",
                 [
@@ -418,7 +516,7 @@ with tab1:
             | **ドラマ・自主映画** | 12,000円 | 18,000円 | 24,000円 | 48,000円 | 30分超: 800円/分 |
             
             - **CM（15秒・30秒）**: 通常 3,000円 / お得意様 2,000円（本数計算）
-            - **中島知子のおんせんさんぽ**: 1本固定 3,000円
+            - **固定単価・レギュラー番組**: 番組ごとに設定した単価 × 本数
             - **その他（作業時間計算）**: 1時間あたり 3,000円
             """)
 
@@ -426,6 +524,7 @@ with tab1:
     price_base = 0
     detail_text = ""
     breakdown_text = ""
+    genre_display_name = selected_genre
 
     if selected_genre in ["YouTube・配信", "番組"]:
         price_base, breakdown_text = calc_duration_price(duration_val, is_drama=False)
@@ -438,11 +537,11 @@ with tab1:
         price_base = unit_price * cm_count
         detail_text = f"{cm_pattern}パターン（{unit_price:,}円/本）× {cm_count}本"
         breakdown_text = f"単価 {unit_price:,}円 × {cm_count}本 = {price_base:,}円"
-    elif selected_genre == "中島知子のおんせんさんぽ":
-        unit_price = 3000
-        price_base = unit_price * onsen_count
-        detail_text = f"固定（3,000円/本）× {onsen_count}本"
-        breakdown_text = f"3,000円 × {onsen_count}本 = {price_base:,}円"
+    elif selected_genre == "固定単価・レギュラー番組":
+        genre_display_name = f"固定単価番組（{fixed_prog_name}）"
+        price_base = fixed_prog_price * fixed_prog_count
+        detail_text = f"単価 {fixed_prog_price:,}円/本 × {fixed_prog_count}本"
+        breakdown_text = f"{fixed_prog_price:,}円 × {fixed_prog_count}本 = {price_base:,}円"
     elif selected_genre == "その他（作業時間計算）":
         price_base = int(round(work_hours * 3000))
         detail_text = f"{work_hours:.1f} 時間（3,000円/時間）"
@@ -531,7 +630,7 @@ with tab1:
 
 ■ お見積り金額
 合計： {price_label}
-（内訳：{selected_genre} {detail_text}）
+（内訳：{genre_display_name} {detail_text}）
 
 {schedule_block}{spec_block}
 
@@ -559,7 +658,7 @@ with tab1:
 ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
 
 【お見積り】
-・ジャンル: {selected_genre}（{detail_text}）
+・ジャンル: {genre_display_name}（{detail_text}）
 ・お見積金額: {price_label}{simple_sched}{simple_sched_note}
 
 仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！"""
@@ -572,7 +671,7 @@ with tab1:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 【お見積もり内容】
-・案件ジャンル : {selected_genre}
+・案件ジャンル : {genre_display_name}
 ・詳細 / 尺   : {detail_text}
 ・お見積り金額 : {price_label}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
