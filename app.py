@@ -1,3 +1,4 @@
+import datetime
 import streamlit as st
 
 # ==========================================
@@ -10,7 +11,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# カスタムCSS（シンプルで見やすく、枠が広くすっきりしたデザイン）
+# 曜日変換ヘルパー
+WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
+
+def format_date_jp(d: datetime.date) -> str:
+    """日付を '11/3（火）' のような曜日付きフォーマットに変換"""
+    weekday = WEEKDAY_JP[d.weekday()]
+    return f"{d.month}/{d.day}（{weekday}）"
+
+# カスタムCSS
 st.markdown("""
 <style>
     /* メインタイトル */
@@ -195,16 +204,92 @@ with tab1:
         tax_option = st.radio("消費税の表示", ["税込（10%）", "税抜（+消費税）", "税込（内税表記）"], horizontal=True)
 
         st.markdown("---")
-        st.subheader("📅 スケジュール設定")
-        st.caption("空欄の項目はメッセージから自動で省略されます。柔軟な表現（例: 〇日夜、要相談など）で入力可能です。")
+        st.subheader("📅 制作スケジュール（案）の設定")
 
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            schedule_delivery = st.text_input("ご希望納期", placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで")
-            schedule_handover = st.text_input("データご搬入予定", placeholder="例: 本編：未定、ナレ：11/2（月）21:30ごろ")
-        with col_s2:
-            schedule_work = st.text_input("作業予定日（対応可能日）", placeholder="例: 11/2（月）夜、11/4（水）夕方以降")
-            include_delay_note = st.checkbox("搬入遅延に関する注記を含める", value=True, help="データ搬入が遅れた場合に納期が変動する旨の注記です。")
+        # 入力モード選択
+        schedule_mode = st.radio(
+            "スケジュールの入力方法",
+            ["📅 カレンダーから選ぶ（おすすめ）", "✏️ 自由に入力する（複数本・特殊な指定）"],
+            horizontal=True
+        )
+
+        today = datetime.date.today()
+        schedule_delivery_text = ""
+        schedule_handover_text = ""
+        schedule_work_text = ""
+
+        if schedule_mode == "📅 カレンダーから選ぶ（おすすめ）":
+            # 1. 希望納期
+            col_d1, col_d2 = st.columns([3, 2])
+            with col_d1:
+                date_delivery = st.date_input("ご希望納期の日付", value=today + datetime.timedelta(days=3))
+            with col_d2:
+                time_delivery = st.selectbox(
+                    "納期の時間帯",
+                    ["中（終日）", "夕方まで", "午前中", "23:59まで", "18:00まで", "要相談"],
+                    key="time_del"
+                )
+            schedule_delivery_text = f"{format_date_jp(date_delivery)} {time_delivery}"
+
+            # 2. データご搬入
+            col_h1, col_h2 = st.columns([3, 2])
+            with col_h1:
+                date_handover = st.date_input("データご搬入の日付", value=today + datetime.timedelta(days=1))
+            with col_h2:
+                time_handover = st.text_input("搬入の時間帯・詳細", value="21:30ごろ", placeholder="例: 21:30ごろ、夜、午前中")
+            schedule_handover_text = f"{format_date_jp(date_handover)} {time_handover}".strip()
+
+            # 3. 作業予定日
+            col_w1, col_w2 = st.columns([3, 2])
+            with col_w1:
+                date_work = st.date_input("作業予定日の日付", value=today + datetime.timedelta(days=1))
+            with col_w2:
+                time_work = st.selectbox(
+                    "作業予定の時間帯",
+                    ["夜", "夕方以降", "終日", "午前中", "午後", "深夜"],
+                    key="time_work"
+                )
+            schedule_work_text = f"{format_date_jp(date_work)} {time_work}"
+
+            # 除外チェックボックス
+            col_chk1, col_chk2, col_chk3 = st.columns(3)
+            with col_chk1:
+                use_delivery = st.checkbox("納期を含める", value=True)
+            with col_chk2:
+                use_handover = st.checkbox("搬入日を含める", value=True)
+            with col_chk3:
+                use_work = st.checkbox("作業日を含める", value=True)
+
+            if not use_delivery:
+                schedule_delivery_text = ""
+            if not use_handover:
+                schedule_handover_text = ""
+            if not use_work:
+                schedule_work_text = ""
+
+        else:
+            # 自由入力モード
+            schedule_delivery_text = st.text_input(
+                "ご希望納期",
+                value="1本目：11/3（火）中、2本目：11/10（火）まで",
+                placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで"
+            )
+            schedule_handover_text = st.text_input(
+                "データご搬入",
+                value="本編？ 　ナレ：11/2（月）21:30ごろ",
+                placeholder="例: 本編？ 　ナレ：11/2（月）21:30ごろ"
+            )
+            schedule_work_text = st.text_input(
+                "作業予定日",
+                value="11/2（月）夜、11/4 夕方以降",
+                placeholder="例: 11/2（月）夜、11/4 夕方以降"
+            )
+
+        include_delay_note = st.checkbox(
+            "搬入遅延に関する注記を含める",
+            value=True,
+            help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
+        )
 
         with st.expander("🎚️ 納品仕様・音声レベル設定（ココナラ・プロ向け仕様）", expanded=False):
             audio_spec = st.selectbox(
@@ -307,12 +392,12 @@ with tab1:
 
         # スケジュールブロック作成
         schedule_lines = []
-        if schedule_delivery.strip():
-            schedule_lines.append(f"・ご希望納期： {schedule_delivery.strip()}")
-        if schedule_handover.strip():
-            schedule_lines.append(f"・データご搬入： {schedule_handover.strip()}")
-        if schedule_work.strip():
-            schedule_lines.append(f"・作業予定日： {schedule_work.strip()}")
+        if schedule_delivery_text.strip():
+            schedule_lines.append(f"・ご希望納期： {schedule_delivery_text.strip()}")
+        if schedule_handover_text.strip():
+            schedule_lines.append(f"・データご搬入： {schedule_handover_text.strip()}")
+        if schedule_work_text.strip():
+            schedule_lines.append(f"・作業予定日： {schedule_work_text.strip()}")
         if include_delay_note and schedule_lines:
             schedule_lines.append("※データご搬入が予定より遅れた場合、納期が後ろ倒しになる可能性がございます。")
 
@@ -329,7 +414,7 @@ with tab1:
             spec_lines.append(f"・修正対応： {retake_policy}")
         spec_block = "■ 納品データの仕様・音声レベル\n" + "\n".join(spec_lines)
 
-        # パターン1: ココナラ・クラウドソーシング特化型（ユーザー様の形式を洗練）
+        # パターン1: ココナラ・クラウドソーシング特化型
         quote_msg_coconala = f"""{client_display}
 
 いつも大変お世話になっております。
@@ -352,7 +437,7 @@ with tab1:
 何卒よろしくお願い申し上げます。"""
 
         # パターン2: シンプル（チャット・即答用）
-        simple_sched = f"\n・希望納期: {schedule_delivery.strip()}" if schedule_delivery.strip() else ""
+        simple_sched = f"\n・希望納期: {schedule_delivery_text.strip()}" if schedule_delivery_text.strip() else ""
         quote_msg_simple = f"""{client_display}
 お世話になっております！
 ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
