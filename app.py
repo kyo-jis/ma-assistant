@@ -115,9 +115,10 @@ def render_schedule_inputs(
 ) -> dict:
     today = datetime.date.today()
     if show_title and item_title:
-        st.markdown(f"**📌 {item_title}**")
+        st.markdown(f'<div style="font-weight: 700; color: #0F766E; font-size: 1.05rem; margin-bottom: 0.7rem; border-bottom: 1px solid #CCFBF1; padding-bottom: 0.3rem;">📌 {item_title}</div>', unsafe_allow_html=True)
 
     # 1. 希望納期
+    st.markdown("🎯 **ご希望納期**")
     col_d1, col_d2 = st.columns([3, 2])
     with col_d1:
         del_date = st.date_input("ご希望納期の日付", value=today + datetime.timedelta(days=default_del_days), key=f"d_date_{item_key}")
@@ -219,55 +220,160 @@ def render_schedule_inputs(
 # カスタムCSS
 st.markdown("""
 <style>
-    /* メインタイトル */
+    /* メインタイトル（明るいグラデーション） */
     .main-header {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 0.2rem;
+        font-size: 2.1rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 50%, #0D9488 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.5px;
+        margin-bottom: 0.3rem;
     }
     .sub-header {
-        font-size: 0.95rem;
-        color: #4B5563;
-        margin-bottom: 1.2rem;
+        font-size: 0.96rem;
+        color: #475569;
+        margin-bottom: 1.4rem;
+        line-height: 1.6;
     }
-    /* カード風スタイル */
+
+    /* 各セクションのステップバッジ＆見出し */
+    .section-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #0F172A;
+        display: flex;
+        align-items: center;
+        margin-top: 1.2rem;
+        margin-bottom: 0.8rem;
+    }
+    .step-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.75rem;
+        font-weight: 800;
+        padding: 3px 9px;
+        border-radius: 6px;
+        margin-right: 8px;
+        letter-spacing: 0.5px;
+    }
+    .step-badge-blue {
+        background-color: #DBEAFE;
+        color: #1D4ED8;
+    }
+    .step-badge-teal {
+        background-color: #CCFBF1;
+        color: #0F766E;
+    }
+    .step-badge-purple {
+        background-color: #F3E8FF;
+        color: #7E22CE;
+    }
+    .step-badge-green {
+        background-color: #DCFCE7;
+        color: #15803D;
+    }
+
+    /* お見積もり結果カード（明るく視認性の高いスタイル） */
     .metric-card {
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 1.2rem;
-        margin-bottom: 1rem;
-    }
-    .item-card {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
+        background: linear-gradient(135deg, #F0FDF4 0%, #EFF6FF 100%);
+        border: 2px solid #BFDBFE;
+        border-radius: 16px;
+        padding: 1.4rem;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);
     }
     .total-price {
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: #2563EB;
+        font-size: 2.6rem;
+        font-weight: 900;
+        color: #1E40AF;
+        letter-spacing: -0.5px;
+        margin: 0.3rem 0;
     }
     .tax-note {
-        font-size: 0.85rem;
-        color: #64748B;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #047857;
+        background: #DCFCE7;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        display: inline-block;
     }
+    .breakdown-box {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 0.8rem 1rem;
+        margin-top: 0.9rem;
+    }
+    .breakdown-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #64748B;
+        margin-bottom: 0.4rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .breakdown-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.4rem 0;
+        border-bottom: 1px dashed #F1F5F9;
+        font-size: 0.88rem;
+        color: #1E293B;
+    }
+    .breakdown-item:last-child {
+        border-bottom: none;
+    }
+    .breakdown-price {
+        font-weight: 700;
+        color: #2563EB;
+        font-size: 0.95rem;
+    }
+
+    /* コピーツールチップ / 注意書き案内 */
+    .copy-tip {
+        background: #EFF6FF;
+        border-left: 4px solid #3B82F6;
+        padding: 0.65rem 1rem;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        color: #1E40AF;
+        margin-bottom: 1rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
     /* タブデザイン */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 6px;
+        background-color: #F8FAFC;
+        padding: 5px;
+        border-radius: 10px;
+        border: 1px solid #E2E8F0;
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 8px 16px;
+        padding: 8px 18px;
         font-weight: 600;
+        border-radius: 7px;
+        color: #64748B;
+        transition: all 0.2s ease;
     }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #2563EB !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
     /* コードブロックのフォントと余白改善 */
     pre code {
         font-size: 0.92rem !important;
-        line-height: 1.6 !important;
+        line-height: 1.65 !important;
         font-family: 'Consolas', 'Courier New', monospace !important;
+        background-color: #F8FAFC !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -327,7 +433,12 @@ with tab1:
     col_input, col_result = st.columns([1, 1], gap="large")
 
     with col_input:
-        st.subheader("📋 案件・基本情報の入力")
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-blue">STEP 1</span>
+            <span>案件情報・依頼内容の入力</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         # 宛名・案件名
         client_name = st.text_input("クライアント名（任意）", placeholder="例: 〇〇 様")
@@ -348,10 +459,10 @@ with tab1:
 
         for idx, item in enumerate(st.session_state.quote_items):
             item_id = item["id"]
-            card_title = f"🎬 依頼内容 {idx + 1}" if num_items > 1 else "🎬 依頼内容"
+            card_title = f"依頼内容 {idx + 1}" if num_items > 1 else "依頼内容"
 
-            with st.container():
-                st.markdown(f"#### {card_title}")
+            with st.container(border=True):
+                st.markdown(f'<div style="font-weight: 700; color: #1E3A8A; font-size: 1.05rem; margin-bottom: 0.5rem;">🎬 {card_title}</div>', unsafe_allow_html=True)
 
                 col_g, col_del = st.columns([5, 1])
                 with col_g:
@@ -528,7 +639,12 @@ with tab1:
         tax_option = st.radio("消費税の表示", ["税込（内税表記）", "税込（10%）", "税抜（+消費税）"], index=0, horizontal=True)
 
         st.markdown("---")
-        st.subheader("📅 制作スケジュール（案）の設定")
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-teal">STEP 2</span>
+            <span>制作スケジュール（案）の設定</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         # スケジュール入力モード判定
         num_items = len(st.session_state.quote_items)
@@ -663,7 +779,13 @@ with tab1:
 
         # 納品仕様・作業内容・音声レベル設定
         st.markdown("---")
-        with st.expander("🎚️ 納品仕様・作業内容・音声レベル設定", expanded=True):
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-purple">STEP 3</span>
+            <span>納品仕様・作業内容・修正規定</span>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.expander("🎚️ 納品仕様・作業内容・音声レベル設定（詳細）", expanded=True):
             st.markdown("##### 🛠️ 主な作業内容の選択")
             include_work_contents = st.checkbox("メッセージに「主な作業内容」を含める", value=True, key="chk_inc_work_contents")
 
@@ -774,21 +896,32 @@ with tab1:
 
     # --- 右カラム: 計算結果 & メッセージ生成 ---
     with col_result:
-        st.subheader("💡 お見積り結果")
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-green">RESULT</span>
+            <span>お見積り金額・送信メッセージ</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         # 合計金額表示カード
-        breakdown_html = "<ul style='margin: 0; padding-left: 1.2rem; font-size: 0.85rem; color: #334155;'>"
+        breakdown_html = ""
         for i, res in enumerate(items_calculation_results):
-            breakdown_html += f"<li><strong>{res['detail']}</strong> : {res['price_base']:,} 円</li>"
-        breakdown_html += "</ul>"
+            breakdown_html += f"""
+            <div class="breakdown-item">
+                <span style="font-weight: 500;">{res['detail']}</span>
+                <span class="breakdown-price">{res['price_base']:,} 円</span>
+            </div>
+            """
 
         st.markdown(f"""
         <div class="metric-card">
-            <div style="font-size: 0.9rem; color: #475569; font-weight: 600;">合計お見積り金額</div>
-            <div class="total-price">¥{price_label}</div>
-            <div class="tax-note">{tax_detail}</div>
-            <div style="margin-top: 0.8rem;">
-                <div style="font-size: 0.85rem; font-weight: 600; color: #1E293B; margin-bottom: 0.3rem;">内訳明細:</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
+                <span style="font-size: 0.88rem; font-weight: 700; color: #475569; letter-spacing: 0.5px;">合計お見積り金額</span>
+                <span class="tax-note">{tax_detail}</span>
+            </div>
+            <div class="total-price">{price_label}</div>
+            <div class="breakdown-box">
+                <div class="breakdown-title">📋 案件別・内訳明細</div>
                 {breakdown_html}
             </div>
         </div>
@@ -986,8 +1119,15 @@ with tab1:
 スケジュール等につきまして、調整のご要望がございましたらお申し付けくださいませ。
 ご検討のほど、何卒よろしくお願い申し上げます。"""
 
-        st.markdown("##### ✉️ コピペ用メッセージ（右上のアイコンでワンクリックコピー）")
-        st.caption("枠の右上に表示されるコピーボタン（📋アイコン）を押すと、一瞬でクリップボードにコピーされます。")
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-blue">MESSAGE</span>
+            <span>コピペ用送信メッセージ</span>
+        </div>
+        <div class="copy-tip">
+            💡 各タブ右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
+        </div>
+        """, unsafe_allow_html=True)
 
         q_tab1, q_tab2, q_tab3 = st.tabs([
             "🌟 ココナラ・案件提案用（スケジュール・仕様入り）",
@@ -1018,7 +1158,12 @@ with tab2:
     col_eval_input, col_eval_result = st.columns([1, 1], gap="large")
 
     with col_eval_input:
-        st.subheader("⚙️ 案件状況・トーンの設定")
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-blue">STEP 1</span>
+            <span>取引状況・トーンの設定</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         eval_client_name = st.text_input(
             "クライアント名（任意）",
@@ -1153,8 +1298,15 @@ with tab2:
 
     # --- 右カラム: 生成結果 ---
     with col_eval_result:
-        st.subheader("📝 生成メッセージ（選べる4パターン）")
-        st.caption("枠の右上に表示されるコピーボタン（📋アイコン）を押すと、一瞬でコピーできます。")
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-teal">STEP 2</span>
+            <span>納品・評価コメントのコピー</span>
+        </div>
+        <div class="copy-tip">
+            💡 各タブ右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
+        </div>
+        """, unsafe_allow_html=True)
 
         subtab1, subtab2, subtab3, subtab4 = st.tabs([
             "⚡ シンプル（短文チャット）",
