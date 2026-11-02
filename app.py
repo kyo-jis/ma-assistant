@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 import streamlit as st
 
 # ==========================================
@@ -420,10 +421,14 @@ def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, fl
 # アプリケーションヘッダー
 # ==========================================
 st.markdown('<div class="main-header">🎙️ 音声編集（MA）業務アシスタント</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">見積もり計算からコピペ用メッセージ、納品後の評価コメントまでをワンストップで作成します。</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">見積もり計算から制作中のファイル送信・やり取りメッセージ、納品後の評価コメントまでをワンストップで作成します。</div>', unsafe_allow_html=True)
 
-# 2つのタブを作成
-tab1, tab2 = st.tabs(["💰 見積もり・提案作成", "💬 納品・評価コメント作成"])
+# 3つのタブを作成
+tab1, tab2, tab3 = st.tabs([
+    "💰 見積もり・提案作成",
+    "✉️ 連絡・ファイル送信",
+    "💬 納品・評価コメント作成"
+])
 
 
 # ==========================================
@@ -1151,9 +1156,269 @@ with tab1:
 
 
 # ==========================================
-# タブ2: 評価コメント作成
+# タブ2: 業務連絡・ファイル送信メッセージ
 # ==========================================
 with tab2:
+    col_comm_input, col_comm_result = st.columns([1, 1], gap="large")
+
+    with col_comm_input:
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-blue">STEP 1</span>
+            <span>メッセージ設定・URL・コメント</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        comm_client_name = st.text_input(
+            "宛名 / クライアント名（任意）",
+            placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
+            key="comm_client_name"
+        )
+
+        c_comm_p1, c_comm_p2 = st.columns([1, 1])
+        with c_comm_p1:
+            comm_project_name = st.text_input(
+                "案件名（任意）",
+                placeholder="例: YouTube対談動画",
+                key="comm_project_name"
+            )
+        with c_comm_p2:
+            comm_file_type = st.selectbox(
+                "ファイルの種類",
+                [
+                    "ミックスファイル",
+                    "初稿ミックス音源",
+                    "修正版ミックス音源",
+                    "完パケ（マスタリング済み）データ",
+                    "パラデータ・ステム音源",
+                    "MA済み映像データ",
+                    "✏️ 直接指定"
+                ],
+                key="comm_file_type"
+            )
+            if comm_file_type == "✏️ 直接指定":
+                comm_file_custom = st.text_input(
+                    "ファイル種別の直接入力",
+                    placeholder="例: 2mix（WAV・MP3）データ",
+                    key="comm_file_custom"
+                )
+                file_label = comm_file_custom.strip() if comm_file_custom.strip() else "ファイル"
+            else:
+                file_label = comm_file_type
+
+        comm_pattern = st.selectbox(
+            "📋 定型文テンプレート（シチュエーション）",
+            [
+                "🎵 ファイル送付（基本・シンプル）",
+                "🎧 初稿・ラフミックス送付（確認依頼）",
+                "🔄 修正版ファイル送付（差し替え）",
+                "📦 最終完成データ納品（検収依頼）",
+                "📥 素材受領・作業着手のご連絡",
+                "💬 自由作成（カスタム）"
+            ],
+            key="comm_pattern"
+        )
+
+        comm_url = st.text_area(
+            "🔗 ファイルダウンロードURL（ギガファイル便、Google Drive等）",
+            placeholder="例:\nhttps://63.gigafile.nu/1102-efb8d3101822180e3e19859a21594d79",
+            height=90,
+            key="comm_url"
+        )
+
+        comm_url_meta = st.text_input(
+            "⏳ 保持期限・DLキー等（任意）",
+            placeholder="例: ダウンロード期限: 7日間 / DLキー: 1234",
+            key="comm_url_meta"
+        )
+
+        comm_free_text = st.text_area(
+            "📝 自由コメント・特記事項・連絡事項（任意）",
+            placeholder="例:\nボーカルの音量を少し持ち上げております。BGMとのバランスをご確認ください。\n気になる点がございましたら何でもお知らせください。",
+            height=120,
+            key="comm_free_text"
+        )
+
+        comm_closing = st.selectbox(
+            "🤝 締めの挨拶",
+            [
+                "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。",
+                "ご確認のほど、よろしくお願いいたします。",
+                "気になる点や微調整のご希望がございましたら、お気軽にお申し付けください。",
+                "問題ございませんでしたら、検収・正式納品のお手続きへお進みいただけますと幸いです。",
+                "締めの挨拶なし（自由コメントのみで終了）"
+            ],
+            key="comm_closing"
+        )
+
+    # --- メッセージ生成ロジック ---
+    def generate_comm_msg(tone: str) -> str:
+        c_header = f"{comm_client_name.strip()}\n\n" if comm_client_name.strip() else ""
+        proj_prefix = f"「{comm_project_name.strip()}」の" if comm_project_name.strip() else ""
+
+        url_lines = []
+        if comm_url.strip():
+            url_lines.append(comm_url.strip())
+        if comm_url_meta.strip():
+            url_lines.append(f"※{comm_url_meta.strip()}")
+        url_section = "\n".join(url_lines)
+
+        comment_section = comm_free_text.strip()
+
+        closing_text = ""
+        if comm_closing != "締めの挨拶なし（自由コメントのみで終了）":
+            if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                if tone == "simple":
+                    closing_text = "ご確認よろしくお願いいたします。\n気になる点ございましたらご連絡ください。"
+                elif tone == "standard":
+                    closing_text = "ご確認のほど、よろしくお願いいたします。\n気になる点やご要望などがございましたら、いつでもお気軽にご連絡ください。"
+                else:
+                    closing_text = "恐れ入りますが、内容をご確認いただけますようお願い申し上げます。\n修正や追加のご要望がございましたら、何なりとお申し付けくださいませ。"
+            else:
+                closing_text = comm_closing
+
+        if comm_pattern == "🎵 ファイル送付（基本・シンプル）":
+            if tone == "simple":
+                greeting = "お世話になります。"
+                lead = f"{file_label}お送りします。"
+            elif tone == "standard":
+                greeting = "いつもお世話になっております。"
+                lead = f"{proj_prefix}{file_label}をお送りいたします。"
+            else:
+                greeting = "いつも大変お世話になっております。"
+                lead = f"ご依頼いただいておりました{proj_prefix}{file_label}の書き出しが完了いたしましたので、ダウンロードURLをご案内申し上げます。"
+
+        elif comm_pattern == "🎧 初稿・ラフミックス送付（確認依頼）":
+            if tone == "simple":
+                greeting = "お世話になります。"
+                lead = f"{proj_prefix}{file_label}（初稿）の作業が完了しましたのでお送りします。"
+                if not comment_section:
+                    comment_section = "全体の音量感やバランス等をご確認いただけますと幸いです。"
+            elif tone == "standard":
+                greeting = "いつもお世話になっております。"
+                lead = f"{proj_prefix}{file_label}（初稿）を作成いたしましたので、音源データをお送りいたします。"
+                if not comment_section:
+                    comment_section = "話者の聞き取りやすさや、BGM・効果音（SE）とのバランスを中心にご確認いただけますと幸いです。"
+            else:
+                greeting = "いつも大変お世話になっております。"
+                lead = f"{proj_prefix}{file_label}の一次編集（初稿）作業が完了いたしましたので、共有データをお送り申し上げます。"
+                if not comment_section:
+                    comment_section = "規定仕様および全体のバランス調整を行っております。ご視聴いただき、ご意見や調整希望がございましたらお知らせください。"
+
+        elif comm_pattern == "🔄 修正版ファイル送付（差し替え）":
+            if tone == "simple":
+                greeting = "お世話になります。"
+                lead = f"ご指示いただいた修正を反映した{file_label}をお送りします。"
+            elif tone == "standard":
+                greeting = "いつもお世話になっております。"
+                lead = f"ご指示いただきました修正箇所を反映した{file_label}をお送りいたします。"
+            else:
+                greeting = "いつも大変お世話になっております。"
+                lead = f"過日ご指示を賜りました修正箇所につきまして、反映および再調整を行った{file_label}をお送り申し上げます。"
+
+        elif comm_pattern == "📦 最終完成データ納品（検収依頼）":
+            if tone == "simple":
+                greeting = "お世話になります。"
+                lead = f"{proj_prefix}最終完成データ（{file_label}）をお送りします。"
+                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                    closing_text = "問題ございませんでしたら、このまま検収・完了のお手続きへお進みいただけますと幸いです。\nどうぞよろしくお願いいたします。"
+            elif tone == "standard":
+                greeting = "いつも大変お世話になっております。"
+                lead = f"{proj_prefix}すべての音声編集（MA）工程が完了いたしましたので、最終納品データをお送りいたします。"
+                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                    closing_text = "データをご確認いただき、問題がないようでしたら完了のお手続き（検収・評価）へお進みいただけますと幸いです。\nこの度はご依頼いただき、誠にありがとうございました！"
+            else:
+                greeting = "いつも大変お世話になっております。"
+                lead = f"{proj_prefix}すべての整音およびマスタリング工程が完了いたしましたので、最終完パケデータ一式をご納品申し上げます。"
+                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                    closing_text = "最終データをご査収いただき、問題がございませんでしたら検収のお手続きを賜りますようお願い申し上げます。\n今後とも何卒よろしくお願い申し上げます。"
+
+        elif comm_pattern == "📥 素材受領・作業着手のご連絡":
+            if tone == "simple":
+                greeting = "お世話になります。"
+                lead = f"素材データ（{file_label}）を無事受領いたしました。ご手配ありがとうございます。\nこれより作業に着手いたします。"
+                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                    closing_text = "初稿の仕上がりまで今しばらくお待ちください。よろしくお願いいたします。"
+            elif tone == "standard":
+                greeting = "いつもお世話になっております。"
+                lead = f"{proj_prefix}作業素材一式を無事に受領・確認いたしました。迅速なご手配をいただき誠にありがとうございます。\nこれより音声編集（MA）作業に着手させていただきます。"
+                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                    closing_text = "予定スケジュールに沿って丁寧に進めてまいります。初稿のお届けまで今しばらくお待ちくださいませ。\n引き続きよろしくお願いいたします。"
+            else:
+                greeting = "いつも大変お世話になっております。"
+                lead = f"ご手配いただきました{proj_prefix}制作素材一式を確かに受領いたしました。迅速にご対応いただき厚く御礼申し上げます。\nこれより規定仕様に準拠した整音・ミックス作業を開始いたします。"
+                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                    closing_text = "予定納期に向けて進捗を進めてまいりますので、何卒よろしくお願い申し上げます。"
+
+        else:  # 💬 自由作成（カスタム）
+            greeting = "お世話になります。" if tone == "simple" else ("いつもお世話になっております。" if tone == "standard" else "いつも大変お世話になっております。")
+            lead = ""
+
+        # 各ブロックの結合
+        parts = []
+        if c_header:
+            parts.append(c_header.strip())
+        
+        greeting_block = f"{greeting}\n{lead}" if lead else greeting
+        parts.append(greeting_block.strip())
+
+        if url_section:
+            parts.append(url_section.strip())
+
+        if comment_section:
+            parts.append(comment_section.strip())
+
+        if closing_text:
+            parts.append(closing_text.strip())
+
+        raw_msg = "\n\n".join(parts)
+        cleaned_msg = re.sub(r'\n{3,}', '\n\n', raw_msg.strip())
+        return cleaned_msg
+
+    comm_msg_simple = generate_comm_msg("simple")
+    comm_msg_standard = generate_comm_msg("standard")
+    comm_msg_formal = generate_comm_msg("formal")
+
+    with col_comm_result:
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-teal">STEP 2</span>
+            <span>送信メッセージの確認・コピー</span>
+        </div>
+        <div class="copy-tip">
+            💡 各タブ右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
+        </div>
+        """, unsafe_allow_html=True)
+
+        comm_subtab1, comm_subtab2, comm_subtab3 = st.tabs([
+            "⚡ シンプル（短文チャット用）",
+            "📝 標準（丁寧・親しみ）",
+            "👔 フォーマル（ビジネス用）"
+        ])
+
+        with comm_subtab1:
+            st.markdown("##### ⚡ シンプル版（要点直球・短文）")
+            st.code(comm_msg_simple, language="markdown")
+            with st.expander("✏️ テキストを直接編集してコピーしたい場合"):
+                st.text_area("編集用テキストエリア", value=comm_msg_simple, height=220, key="edit_comm_simple")
+
+        with comm_subtab2:
+            st.markdown("##### 📝 標準版（バランス・親しみやすい丁寧さ）")
+            st.code(comm_msg_standard, language="markdown")
+            with st.expander("✏️ テキストを直接編集してコピーしたい場合"):
+                st.text_area("編集用テキストエリア", value=comm_msg_standard, height=250, key="edit_comm_std")
+
+        with comm_subtab3:
+            st.markdown("##### 👔 フォーマル版（ビジネス・企業向け）")
+            st.code(comm_msg_formal, language="markdown")
+            with st.expander("✏️ テキストを直接編集してコピーしたい場合"):
+                st.text_area("編集用テキストエリア", value=comm_msg_formal, height=280, key="edit_comm_formal")
+
+
+# ==========================================
+# タブ3: 評価コメント作成
+# ==========================================
+with tab3:
     col_eval_input, col_eval_result = st.columns([1, 1], gap="large")
 
     with col_eval_input:
