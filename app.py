@@ -1078,9 +1078,8 @@ with tab1:
 {detail_items_text}
 {raw_audio_note_text}
 {schedule_block}{spec_block}{coconala_work_part}
-上記スケジュールおよび内容で問題ございませんでしたら、いつでも正式にご依頼いただけますと幸いです。
-ご不明点やご予算・日程のご相談がございましたら、柔軟に対応いたしますのでお気軽にお申し付けください。
-何卒よろしくお願い申し上げます。"""
+上記内容でご検討のほど、よろしくお願いいたします。
+日程やご予算についてのご相談もお気軽にお知らせください。"""
 
         # パターン2: シンプル（チャット・即答用）
         simple_sched = f"\n・希望納期: {schedule_delivery_summary.strip()}" if schedule_delivery_summary.strip() else ""
