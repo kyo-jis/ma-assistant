@@ -131,12 +131,33 @@ def render_schedule_inputs(
         del_text = f"{format_date_jp(del_date)} {del_time}"
 
     # 2. データご搬入
-    col_h1, col_h2 = st.columns([3, 2])
-    with col_h1:
-        han_date = st.date_input("データご搬入日", value=today + datetime.timedelta(days=default_han_days), key=f"h_date_{item_key}")
-    with col_h2:
-        han_time = st.text_input("搬入時間・メモ", value="21:30ごろ", placeholder="例: 21:30ごろ、夕方、ナレ11/3など", key=f"h_time_{item_key}")
-    han_text = f"{format_date_jp(han_date)} {han_time}".strip()
+    col_h_hdr1, col_h_hdr2 = st.columns([3, 2])
+    with col_h_hdr1:
+        st.markdown("📦 **データご搬入**")
+    with col_h_hdr2:
+        is_received = st.checkbox("素材受領済み（搬入済み）", value=False, key=f"h_rcv_{item_key}", help="すでに素材・データを受け取り済みの場合はチェックしてください")
+
+    if is_received:
+        col_r1, col_r2 = st.columns([3, 2])
+        with col_r1:
+            rcv_status = st.selectbox(
+                "受領ステータス表記",
+                ["素材受領済み", "受領済み", "データ受領済み", "搬入済み", "素材受領済み（データ確認完了）", "✏️ 直接入力"],
+                key=f"h_rcv_sel_{item_key}"
+            )
+        with col_r2:
+            if rcv_status == "✏️ 直接入力":
+                han_text = st.text_input("具体的な表記", value="素材受領済み", key=f"h_rcv_custom_{item_key}").strip()
+            else:
+                han_text = rcv_status
+                st.caption(f"※メッセージには「・データご搬入： {han_text}」と記載されます。")
+    else:
+        col_h1, col_h2 = st.columns([3, 2])
+        with col_h1:
+            han_date = st.date_input("データご搬入日", value=today + datetime.timedelta(days=default_han_days), key=f"h_date_{item_key}")
+        with col_h2:
+            han_time = st.text_input("搬入時間・メモ", value="21:30ごろ", placeholder="例: 21:30ごろ、夕方、ナレ11/3など", key=f"h_time_{item_key}")
+        han_text = f"{format_date_jp(han_date)} {han_time}".strip()
 
     # 3. 作業予定日（何日でも追加可能）
     st.markdown("🛠️ **作業予定日**（大型案件や別日作業に対応）")
@@ -191,7 +212,8 @@ def render_schedule_inputs(
         "title": item_title,
         "delivery": del_text,
         "handover": han_text,
-        "work": work_text
+        "work": work_text,
+        "is_received": is_received
     }
 
 # カスタムCSS
@@ -369,25 +391,6 @@ with tab1:
                             key=dur_key
                         )
 
-                    # 加減算ボタン
-                    b1, b2, b3, b4 = st.columns(4)
-                    with b1:
-                        if st.button("⏪ -10分", key=f"b1_{item_id}", use_container_width=True):
-                            st.session_state[dur_key] = max(1.0, duration_val - 10)
-                            st.rerun()
-                    with b2:
-                        if st.button("◀ -5分", key=f"b2_{item_id}", use_container_width=True):
-                            st.session_state[dur_key] = max(1.0, duration_val - 5)
-                            st.rerun()
-                    with b3:
-                        if st.button("+5分 ▶", key=f"b3_{item_id}", use_container_width=True):
-                            st.session_state[dur_key] = min(300.0, duration_val + 5)
-                            st.rerun()
-                    with b4:
-                        if st.button("+10分 ⏩", key=f"b4_{item_id}", use_container_width=True):
-                            st.session_state[dur_key] = min(300.0, duration_val + 10)
-                            st.rerun()
-
                     # 作業時間目安 & 収録状況工数補正
                     is_drama_genre = (selected_genre == "ドラマ・自主映画")
                     base_calc_price, base_calc_hours = calc_duration_price(duration_val, is_drama=is_drama_genre)
@@ -432,7 +435,7 @@ with tab1:
                         cm_count = st.number_input("本数", min_value=1, max_value=100, value=1, step=1, key=f"cm_cnt_{item_id}")
                     u_price = 2000 if cm_pattern == "お得意様" else 3000
                     item_price_base = u_price * cm_count
-                    item_detail_text = f"CM（15秒・30秒） {cm_pattern}パターン（{u_price:,}円/本）× {cm_count}本"
+                    item_detail_text = f"CM（15秒・30秒）（{u_price:,}円/本）× {cm_count}本"
                     item_breakdown_text = f"{u_price:,}円 × {cm_count}本 = {item_price_base:,}円"
 
                 elif selected_genre == "固定単価・レギュラー番組":
@@ -621,7 +624,7 @@ with tab1:
                 sched_handover_text = st.text_input(
                     "データご搬入",
                     value="本編：未定、ナレ：11/2（月）21:30ごろ",
-                    placeholder="例: 本編：未定、ナレ：11/2（月）21:30ごろ",
+                    placeholder="例: 素材受領済み、または 本編：未定、ナレ：11/2（月）21:30ごろ",
                     key="free_handover_input"
                 )
                 sched_work_text = st.text_input(
@@ -853,7 +856,14 @@ with tab1:
         elif schedule_reservation_type == "🤝 仮確保中（お得意様・リピーター向け）":
             schedule_notes.append("※上記日程にて作業枠を仮確保（キープ）しております。素材のご準備状況やスケジュールの変更などがございましたら、柔軟に調整いたしますのでいつでもお気軽にご相談ください。")
 
-        if include_delay_note:
+        # 素材受領済みの判定（受領済みの場合は搬入遅延の注記を自動除外）
+        is_all_received = False
+        if "案件ごとに個別に設定" in schedule_mode and item_schedules:
+            is_all_received = all(("受領" in s.get("handover", "") or "搬入済み" in s.get("handover", "")) for s in item_schedules)
+        elif sched_handover_text:
+            is_all_received = ("受領" in sched_handover_text or "搬入済み" in sched_handover_text)
+
+        if include_delay_note and not is_all_received:
             schedule_notes.append("※データご搬入が予定より遅れた場合、納期が後ろ倒しになる可能性がございます。")
 
         schedule_block = ""
