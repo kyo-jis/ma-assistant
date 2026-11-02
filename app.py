@@ -689,9 +689,9 @@ with tab1:
             audio_spec = st.selectbox(
                 "音声レベル（ラウドネス規準）",
                 [
-                    "平均ラウドネス値 -24.0 LKFS (True Peak -1.0dBTP) 【放送規格 ARIB TR-B32】",
-                    "目標ラウドネス値 -14.0 LUFS (True Peak -1.0dBTP) 【YouTube・Web動画 推奨値】",
-                    "目標ラウドネス値 -16.0 LUFS (True Peak -1.0dBTP) 【Podcast・音声配信向け目安】",
+                    "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)",
+                    "目標ラウドネス値 -14.0 LUFS (TP -1.0dBTP以下)",
+                    "目標ラウドネス値 -16.0 LUFS (TP -1.0dBTP以下)",
                     "クライアント様指定基準に準拠",
                     "指定なし（最適なバランスに調整）"
                 ],
