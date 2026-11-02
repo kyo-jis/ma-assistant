@@ -908,29 +908,28 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-        # 合計金額表示カード
-        breakdown_html = ""
-        for i, res in enumerate(items_calculation_results):
-            breakdown_html += f"""
-            <div class="breakdown-item">
-                <span style="font-weight: 500;">{res['detail']}</span>
-                <span class="breakdown-price">{res['price_base']:,} 円</span>
-            </div>
-            """
+        # 合計金額表示カード（インデントによるコードブロック誤判定を防ぐため1行結合）
+        breakdown_items = []
+        for res in items_calculation_results:
+            breakdown_items.append(
+                f'<div class="breakdown-item"><span style="font-weight: 500;">{res["detail"]}</span><span class="breakdown-price">{res["price_base"]:,} 円</span></div>'
+            )
+        breakdown_html = "".join(breakdown_items)
 
-        st.markdown(f"""
-        <div class="metric-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
-                <span style="font-size: 0.88rem; font-weight: 700; color: #475569; letter-spacing: 0.5px;">合計お見積り金額</span>
-                <span class="tax-note">{tax_detail}</span>
-            </div>
-            <div class="total-price">{price_label}</div>
-            <div class="breakdown-box">
-                <div class="breakdown-title">📋 案件別・内訳明細</div>
-                {breakdown_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        metric_card_html = (
+            f'<div class="metric-card">'
+            f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">'
+            f'<span style="font-size: 0.88rem; font-weight: 700; color: #475569; letter-spacing: 0.5px;">合計お見積り金額</span>'
+            f'<span class="tax-note">{tax_detail}</span>'
+            f'</div>'
+            f'<div class="total-price">{price_label}</div>'
+            f'<div class="breakdown-box">'
+            f'<div class="breakdown-title">📋 案件別・内訳明細</div>'
+            f'{breakdown_html}'
+            f'</div>'
+            f'</div>'
+        )
+        st.markdown(metric_card_html, unsafe_allow_html=True)
 
         client_display = client_name.strip() if client_name.strip() else "〇〇様"
         project_display = f"「{project_title.strip()}」" if project_title.strip() else ""
