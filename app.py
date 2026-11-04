@@ -145,7 +145,21 @@ def sync_project_name(source_key: str):
     st.session_state.t2_project_name = new_val
     st.session_state.t3_project_name = new_val
 
+def clear_quote_widget_keys():
+    keys_to_delete = [
+        k for k in list(st.session_state.keys())
+        if any(k.startswith(prefix) for prefix in [
+            "genre_", "dur_", "step_", "cond_", "custom_h_",
+            "cm_pat_", "cm_cnt_", "fixed_sel_", "fn_", "fp_", "fc_", "wh_",
+            "sched_del_", "sched_han_", "sched_rec_"
+        ])
+    ]
+    for k in keys_to_delete:
+        del st.session_state[k]
+
 def load_project_into_session(project: dict):
+    clear_quote_widget_keys()
+
     st.session_state.active_project_id = project["id"]
     st.session_state.proj_client_name = project.get("client_name", "")
     st.session_state.proj_project_name = project.get("project_name", "")
@@ -164,6 +178,28 @@ def load_project_into_session(project: dict):
         max_id = max([it.get("id", 1) for it in project["quote_items"]], default=1)
         st.session_state.next_item_id = max_id + 1
 
+        for it in project["quote_items"]:
+            iid = it.get("id", 1)
+            st.session_state[f"genre_{iid}"] = it.get("genre", "番組")
+            if "duration" in it:
+                st.session_state[f"dur_{iid}"] = float(it["duration"])
+            if "condition" in it:
+                st.session_state[f"cond_{iid}"] = it["condition"]
+            if "cm_pattern" in it:
+                st.session_state[f"cm_pat_{iid}"] = it["cm_pattern"]
+            if "cm_count" in it:
+                st.session_state[f"cm_cnt_{iid}"] = int(it["cm_count"])
+            if "fixed_choice" in it:
+                st.session_state[f"fixed_sel_{iid}"] = it["fixed_choice"]
+            if "fixed_name" in it:
+                st.session_state[f"fn_{iid}"] = it["fixed_name"]
+            if "fixed_price" in it:
+                st.session_state[f"fp_{iid}"] = int(it["fixed_price"])
+            if "fixed_count" in it:
+                st.session_state[f"fc_{iid}"] = int(it["fixed_count"])
+            if "work_hours" in it:
+                st.session_state[f"wh_{iid}"] = float(it["work_hours"])
+
     comm_data = project.get("comm_data", {})
     st.session_state.comm_file_type = comm_data.get("file_type", "ミックスファイル")
     st.session_state.comm_pattern = comm_data.get("pattern", "🎵 ファイル送付（基本・シンプル）")
@@ -177,6 +213,8 @@ def load_project_into_session(project: dict):
     st.session_state.eval_appeal_flag = eval_data.get("appeal_flag", True)
 
 def reset_to_new_project():
+    clear_quote_widget_keys()
+
     st.session_state.active_project_id = "new"
     st.session_state.proj_client_name = ""
     st.session_state.proj_project_name = ""
@@ -206,6 +244,32 @@ def reset_to_new_project():
 def save_current_project_data():
     projects = load_projects()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # 最新のquote_items情報をセッションステートから同期
+    updated_items = []
+    for it in st.session_state.quote_items:
+        iid = it["id"]
+        genre = st.session_state.get(f"genre_{iid}", it.get("genre", "番組"))
+        item_copy = {
+            "id": iid,
+            "genre": genre
+        }
+        if genre in ["YouTube・配信", "番組", "ドラマ・自主映画"]:
+            item_copy["duration"] = st.session_state.get(f"dur_{iid}", it.get("duration", 15.0))
+            item_copy["condition"] = st.session_state.get(f"cond_{iid}", "標準（収録状態良好: ±0h）")
+        elif genre == "CM（15秒・30秒）":
+            item_copy["cm_pattern"] = st.session_state.get(f"cm_pat_{iid}", "通常")
+            item_copy["cm_count"] = st.session_state.get(f"cm_cnt_{iid}", 1)
+        elif genre == "固定単価・レギュラー番組":
+            item_copy["fixed_choice"] = st.session_state.get(f"fixed_sel_{iid}", "")
+            item_copy["fixed_name"] = st.session_state.get(f"fn_{iid}", "")
+            item_copy["fixed_price"] = st.session_state.get(f"fp_{iid}", 3000)
+            item_copy["fixed_count"] = st.session_state.get(f"fc_{iid}", 1)
+        elif genre == "その他（作業時間計算）":
+            item_copy["work_hours"] = st.session_state.get(f"wh_{iid}", 2.0)
+        updated_items.append(item_copy)
+
+    st.session_state.quote_items = updated_items
 
     client = st.session_state.get("proj_client_name", "").strip()
     proj_title = st.session_state.get("proj_project_name", "").strip()
@@ -712,6 +776,9 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown('<div style="font-weight: 700; font-size: 0.95rem; color: #334155; margin-bottom: 0.4rem;">⚙️ 案件基本情報</div>', unsafe_allow_html=True)
+    c_name_disp = st.session_state.get('proj_client_name', '').strip() or '（未入力）'
+    p_name_disp = st.session_state.get('proj_project_name', '').strip() or '（未入力）'
+    st.caption(f"👤 クライアント: **{c_name_disp}**  \n🎬 案件名: **{p_name_disp}**")
 
     status_list = [
         "📝 お見積り中",
@@ -914,7 +981,7 @@ with tab1:
                     with c_num:
                         dur_key = f"dur_{item_id}"
                         if dur_key not in st.session_state:
-                            st.session_state[dur_key] = 15.0
+                            st.session_state[dur_key] = float(item.get("duration", 15.0))
                         duration_val = st.number_input(
                             "尺（分）",
                             min_value=1.0,
@@ -922,6 +989,7 @@ with tab1:
                             step=step_unit,
                             key=dur_key
                         )
+                        item["duration"] = duration_val
 
                     # 作業時間目安 & 収録状況工数補正
                     is_drama_genre = (selected_genre == "ドラマ・自主映画")
@@ -939,7 +1007,10 @@ with tab1:
                             "簡易・素材良好（-0.5h / -1,500円）",
                             "手動指定"
                         ]
-                        selected_cond = st.selectbox("素材状態・工数補正", condition_options, key=f"cond_{item_id}")
+                        cur_cond = item.get("condition", "標準（収録状態良好: ±0h）")
+                        cond_idx = condition_options.index(cur_cond) if cur_cond in condition_options else 0
+                        selected_cond = st.selectbox("素材状態・工数補正", condition_options, index=cond_idx, key=f"cond_{item_id}")
+                        item["condition"] = selected_cond
 
                     adj_hours = 0.0
                     if "+0.5h" in selected_cond:
@@ -954,6 +1025,7 @@ with tab1:
                     final_hours = max(0.5, base_calc_hours + adj_hours)
                     if "手動指定" in selected_cond:
                         final_hours = st.number_input("手動作業時間（時間）", min_value=0.5, max_value=50.0, value=base_calc_hours, step=0.5, key=f"custom_h_{item_id}")
+                        item["custom_hours"] = final_hours
 
                     item_price_base = int(round(final_hours * 3000))
                     item_detail_text = f"{selected_genre} {duration_val:.1f}分（想定工数：約{final_hours:.1f}h）"
@@ -962,9 +1034,13 @@ with tab1:
                 elif selected_genre == "CM（15秒・30秒）":
                     c_cm1, c_cm2 = st.columns(2)
                     with c_cm1:
-                        cm_pattern = st.radio("取引先パターン", ["通常", "お得意様"], horizontal=True, key=f"cm_pat_{item_id}")
+                        cm_idx = 1 if item.get("cm_pattern") == "お得意様" else 0
+                        cm_pattern = st.radio("取引先パターン", ["通常", "お得意様"], index=cm_idx, horizontal=True, key=f"cm_pat_{item_id}")
+                        item["cm_pattern"] = cm_pattern
                     with c_cm2:
-                        cm_count = st.number_input("本数", min_value=1, max_value=100, value=1, step=1, key=f"cm_cnt_{item_id}")
+                        cm_cnt_val = int(item.get("cm_count", 1))
+                        cm_count = st.number_input("本数", min_value=1, max_value=100, value=cm_cnt_val, step=1, key=f"cm_cnt_{item_id}")
+                        item["cm_count"] = cm_count
                     u_price = 2000 if cm_pattern == "お得意様" else 3000
                     item_price_base = u_price * cm_count
                     item_detail_text = f"CM（15秒・30秒）（{u_price:,}円/本）× {cm_count}本"
@@ -975,30 +1051,42 @@ with tab1:
                     prog_options = [f"{p['name']}（{p['price']:,}円/本）" for p in custom_programs]
                     prog_options.append("＋ 新規・一時入力（登録せず直接入力）")
 
-                    chosen_p = st.selectbox("番組の選択", prog_options, key=f"fixed_sel_{item_id}")
+                    cur_fixed = item.get("fixed_choice", prog_options[0] if prog_options else "")
+                    f_idx = prog_options.index(cur_fixed) if cur_fixed in prog_options else 0
+                    chosen_p = st.selectbox("番組の選択", prog_options, index=f_idx, key=f"fixed_sel_{item_id}")
+                    item["fixed_choice"] = chosen_p
                     f_name = ""
                     f_price = 3000
 
                     if chosen_p == "＋ 新規・一時入力（登録せず直接入力）":
                         cn1, cn2 = st.columns([3, 2])
                         with cn1:
-                            f_name = st.text_input("番組名", value="レギュラー番組", key=f"fn_{item_id}")
+                            f_name = st.text_input("番組名", value=item.get("fixed_name", "レギュラー番組"), key=f"fn_{item_id}")
+                            item["fixed_name"] = f_name
                         with cn2:
-                            f_price = st.number_input("単価（円/本）", min_value=500, max_value=100000, value=3000, step=500, key=f"fp_{item_id}")
+                            f_price = st.number_input("単価（円/本）", min_value=500, max_value=100000, value=item.get("fixed_price", 3000), step=500, key=f"fp_{item_id}")
+                            item["fixed_price"] = f_price
                     else:
                         idx_p = prog_options.index(chosen_p)
                         target_p = custom_programs[idx_p]
                         f_name = target_p["name"]
                         f_price = target_p["price"]
+                        item["fixed_name"] = f_name
+                        item["fixed_price"] = f_price
 
-                    f_count = st.number_input("制作本数", min_value=1, max_value=100, value=1, step=1, key=f"fc_{item_id}")
+                    f_count = st.number_input("制作本数", min_value=1, max_value=100, value=int(item.get("fixed_count", 1)), step=1, key=f"fc_{item_id}")
+                    item["fixed_count"] = f_count
                     item_price_base = f_price * f_count
                     item_display_genre = f"固定単価番組（{f_name}）"
                     item_detail_text = f"{f_name}（{f_price:,}円/本）× {f_count}本"
                     item_breakdown_text = f"{f_price:,}円 × {f_count}本 = {item_price_base:,}円"
 
                 elif selected_genre == "その他（作業時間計算）":
-                    w_hours = st.number_input("作業時間（時間単位）", min_value=0.5, max_value=200.0, value=2.0, step=0.5, key=f"wh_{item_id}")
+                    w_hours = st.number_input("作業時間（時間単位）", min_value=0.5, max_value=200.0, value=float(item.get("work_hours", 2.0)), step=0.5, key=f"wh_{item_id}")
+                    item["work_hours"] = w_hours
+                    item_price_base = int(round(w_hours * 3000))
+                    item_detail_text = f"作業時間計算 {w_hours:.1f}時間（3,000円/h）"
+                    item_breakdown_text = f"3,000円 × {w_hours:.1f}h = {item_price_base:,}円"
                     item_price_base = int(round(w_hours * 3000))
                     item_detail_text = f"作業時間計算 {w_hours:.1f}時間（3,000円/h）"
                     item_breakdown_text = f"3,000円 × {w_hours:.1f}h = {item_price_base:,}円"
