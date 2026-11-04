@@ -55,6 +55,248 @@ def save_custom_programs(programs: list[dict]):
         st.error(f"番組データの保存に失敗しました: {e}")
 
 # ==========================================
+# プロジェクト（案件データ）の読み書き・永続化
+# ==========================================
+PROJECTS_FILE = os.path.join(os.path.dirname(__file__), "projects_data.json")
+
+def load_projects() -> list[dict]:
+    if not os.path.exists(PROJECTS_FILE):
+        default_samples = [
+            {
+                "id": "sample_proj_1",
+                "name": "株式会社ABC 様 - YouTube対談動画 MA作業",
+                "client_name": "株式会社ABC 様",
+                "project_name": "YouTube対談動画 MA作業",
+                "status": "🎧 制作中（初稿前）",
+                "memo": "48kHz/24bit書き出し。BGM音量控えめで要望あり。",
+                "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "quote_items": [
+                    {"id": 1, "genre": "YouTube・配信", "duration": 20.0}
+                ],
+                "comm_data": {
+                    "file_type": "初稿ミックス音源",
+                    "pattern": "🎧 初稿・ラフミックス送付（確認依頼）",
+                    "url": "https://63.gigafile.nu/1104-sample123456",
+                    "url_meta": "DLキー: 1234 / 保持期限: 7日間",
+                    "free_text": "声の聞き取りやすさを重視して整音・音量調整を行っております。BGMとのバランスをご確認ください。",
+                    "closing": "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。"
+                },
+                "eval_data": {
+                    "impression": "とてもスムーズ",
+                    "appeal_flag": True
+                }
+            }
+        ]
+        try:
+            with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_samples, f, ensure_ascii=False, indent=2)
+        except Exception:
+            return default_samples
+        return default_samples
+
+    try:
+        with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def save_projects(projects: list[dict]):
+    try:
+        with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(projects, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"案件データの保存に失敗しました: {e}")
+
+# プロジェクトセッション管理の初期化
+if "active_project_id" not in st.session_state:
+    st.session_state.active_project_id = "new"
+
+if "proj_client_name" not in st.session_state:
+    st.session_state.proj_client_name = ""
+if "proj_project_name" not in st.session_state:
+    st.session_state.proj_project_name = ""
+if "proj_status" not in st.session_state:
+    st.session_state.proj_status = "📝 お見積り中"
+if "proj_memo" not in st.session_state:
+    st.session_state.proj_memo = ""
+
+# 各タブ同期用キーの初期化
+for k in ["t1_client_name", "t2_client_name", "t3_client_name"]:
+    if k not in st.session_state:
+        st.session_state[k] = st.session_state.proj_client_name
+
+for k in ["t1_project_name", "t2_project_name", "t3_project_name"]:
+    if k not in st.session_state:
+        st.session_state[k] = st.session_state.proj_project_name
+
+def sync_client_name(source_key: str):
+    new_val = st.session_state.get(source_key, "")
+    st.session_state.proj_client_name = new_val
+    st.session_state.t1_client_name = new_val
+    st.session_state.t2_client_name = new_val
+    st.session_state.t3_client_name = new_val
+
+def sync_project_name(source_key: str):
+    new_val = st.session_state.get(source_key, "")
+    st.session_state.proj_project_name = new_val
+    st.session_state.t1_project_name = new_val
+    st.session_state.t2_project_name = new_val
+    st.session_state.t3_project_name = new_val
+
+def load_project_into_session(project: dict):
+    st.session_state.active_project_id = project["id"]
+    st.session_state.proj_client_name = project.get("client_name", "")
+    st.session_state.proj_project_name = project.get("project_name", "")
+    st.session_state.proj_status = project.get("status", "📝 お見積り中")
+    st.session_state.proj_memo = project.get("memo", "")
+
+    st.session_state.t1_client_name = st.session_state.proj_client_name
+    st.session_state.t1_project_name = st.session_state.proj_project_name
+    st.session_state.t2_client_name = st.session_state.proj_client_name
+    st.session_state.t2_project_name = st.session_state.proj_project_name
+    st.session_state.t3_client_name = st.session_state.proj_client_name
+    st.session_state.t3_project_name = st.session_state.proj_project_name
+
+    if "quote_items" in project and project["quote_items"]:
+        st.session_state.quote_items = project["quote_items"]
+        max_id = max([it.get("id", 1) for it in project["quote_items"]], default=1)
+        st.session_state.next_item_id = max_id + 1
+
+    comm_data = project.get("comm_data", {})
+    st.session_state.comm_file_type = comm_data.get("file_type", "ミックスファイル")
+    st.session_state.comm_pattern = comm_data.get("pattern", "🎵 ファイル送付（基本・シンプル）")
+    st.session_state.comm_url = comm_data.get("url", "")
+    st.session_state.comm_url_meta = comm_data.get("url_meta", "")
+    st.session_state.comm_free_text = comm_data.get("free_text", "")
+    st.session_state.comm_closing = comm_data.get("closing", "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。")
+
+    eval_data = project.get("eval_data", {})
+    st.session_state.eval_impression = eval_data.get("impression", "とてもスムーズ")
+    st.session_state.eval_appeal_flag = eval_data.get("appeal_flag", True)
+
+def reset_to_new_project():
+    st.session_state.active_project_id = "new"
+    st.session_state.proj_client_name = ""
+    st.session_state.proj_project_name = ""
+    st.session_state.proj_status = "📝 お見積り中"
+    st.session_state.proj_memo = ""
+
+    st.session_state.t1_client_name = ""
+    st.session_state.t1_project_name = ""
+    st.session_state.t2_client_name = ""
+    st.session_state.t2_project_name = ""
+    st.session_state.t3_client_name = ""
+    st.session_state.t3_project_name = ""
+
+    st.session_state.quote_items = [{"id": 1, "genre": "番組", "duration": 15.0}]
+    st.session_state.next_item_id = 2
+
+    st.session_state.comm_file_type = "ミックスファイル"
+    st.session_state.comm_pattern = "🎵 ファイル送付（基本・シンプル）"
+    st.session_state.comm_url = ""
+    st.session_state.comm_url_meta = ""
+    st.session_state.comm_free_text = ""
+    st.session_state.comm_closing = "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。"
+
+    st.session_state.eval_impression = "とてもスムーズ"
+    st.session_state.eval_appeal_flag = True
+
+def save_current_project_data():
+    projects = load_projects()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    client = st.session_state.get("proj_client_name", "").strip()
+    proj_title = st.session_state.get("proj_project_name", "").strip()
+
+    if client and proj_title:
+        display_name = f"{client} - {proj_title}"
+    elif client:
+        display_name = f"{client}（案件名未定）"
+    elif proj_title:
+        display_name = f"{proj_title}"
+    else:
+        display_name = f"無題の案件（{now_str}）"
+
+    status = st.session_state.get("proj_status", "📝 お見積り中")
+    memo = st.session_state.get("proj_memo", "")
+
+    comm_data = {
+        "file_type": st.session_state.get("comm_file_type", "ミックスファイル"),
+        "pattern": st.session_state.get("comm_pattern", "🎵 ファイル送付（基本・シンプル）"),
+        "url": st.session_state.get("comm_url", ""),
+        "url_meta": st.session_state.get("comm_url_meta", ""),
+        "free_text": st.session_state.get("comm_free_text", ""),
+        "closing": st.session_state.get("comm_closing", "")
+    }
+
+    eval_data = {
+        "impression": st.session_state.get("eval_impression", "とてもスムーズ"),
+        "appeal_flag": st.session_state.get("eval_appeal_flag", True)
+    }
+
+    current_id = st.session_state.get("active_project_id", "new")
+    if current_id == "new":
+        new_id = f"proj_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        project_record = {
+            "id": new_id,
+            "name": display_name,
+            "client_name": client,
+            "project_name": proj_title,
+            "status": status,
+            "memo": memo,
+            "created_at": now_str,
+            "updated_at": now_str,
+            "quote_items": st.session_state.quote_items,
+            "comm_data": comm_data,
+            "eval_data": eval_data
+        }
+        projects.insert(0, project_record)
+        st.session_state.active_project_id = new_id
+    else:
+        found = False
+        for p in projects:
+            if p["id"] == current_id:
+                p["name"] = display_name
+                p["client_name"] = client
+                p["project_name"] = proj_title
+                p["status"] = status
+                p["memo"] = memo
+                p["updated_at"] = now_str
+                p["quote_items"] = st.session_state.quote_items
+                p["comm_data"] = comm_data
+                p["eval_data"] = eval_data
+                found = True
+                break
+        if not found:
+            project_record = {
+                "id": current_id,
+                "name": display_name,
+                "client_name": client,
+                "project_name": proj_title,
+                "status": status,
+                "memo": memo,
+                "created_at": now_str,
+                "updated_at": now_str,
+                "quote_items": st.session_state.quote_items,
+                "comm_data": comm_data,
+                "eval_data": eval_data
+            }
+            projects.insert(0, project_record)
+
+    save_projects(projects)
+    return display_name
+
+def delete_active_project():
+    current_id = st.session_state.get("active_project_id", "new")
+    if current_id != "new":
+        projects = load_projects()
+        projects = [p for p in projects if p["id"] != current_id]
+        save_projects(projects)
+        reset_to_new_project()
+
+# ==========================================
 # 複数案件（マルチアイテム）のセッション管理
 # ==========================================
 if "quote_items" not in st.session_state:
@@ -376,6 +618,22 @@ st.markdown("""
         font-family: 'Consolas', 'Courier New', monospace !important;
         background-color: #F8FAFC !important;
     }
+
+    /* プロジェクト・ステータスバッジ */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.78rem;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        letter-spacing: 0.3px;
+    }
+    .status-estimate { background-color: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+    .status-working  { background-color: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; }
+    .status-retake   { background-color: #FFEDD5; color: #C2410C; border: 1px solid #FED7AA; }
+    .status-delivery { background-color: #F3E8FF; color: #7E22CE; border: 1px solid #E9D5FF; }
+    .status-done     { background-color: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -418,10 +676,154 @@ def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, fl
 
 
 # ==========================================
-# アプリケーションヘッダー
+# サイドバー: 案件（プロジェクト）管理
+# ==========================================
+with st.sidebar:
+    st.markdown('<div style="font-size: 1.25rem; font-weight: 800; color: #1E3A8A; margin-bottom: 0.8rem;">📁 案件・プロジェクト管理</div>', unsafe_allow_html=True)
+
+    all_projects = load_projects()
+    project_options = ["＋ 新規案件を作成"] + [f"{p.get('status', '').split(' ')[0]} {p.get('name', '無題')}" for p in all_projects]
+
+    current_active_id = st.session_state.get("active_project_id", "new")
+    current_idx = 0
+    if current_active_id != "new":
+        for i, p in enumerate(all_projects):
+            if p["id"] == current_active_id:
+                current_idx = i + 1
+                break
+
+    def on_project_selected():
+        selected = st.session_state.sidebar_project_select
+        if selected == "＋ 新規案件を作成":
+            reset_to_new_project()
+        else:
+            idx = project_options.index(selected) - 1
+            if 0 <= idx < len(all_projects):
+                load_project_into_session(all_projects[idx])
+
+    st.selectbox(
+        "作業する案件を選択",
+        project_options,
+        index=current_idx if current_idx < len(project_options) else 0,
+        key="sidebar_project_select",
+        on_change=on_project_selected
+    )
+
+    st.markdown("---")
+
+    st.markdown('<div style="font-weight: 700; font-size: 0.95rem; color: #334155; margin-bottom: 0.4rem;">⚙️ 案件基本情報</div>', unsafe_allow_html=True)
+
+    status_list = [
+        "📝 お見積り中",
+        "🎧 制作中（初稿前）",
+        "🔄 修正対応中",
+        "📦 納品・検収中",
+        "✅ 取引完了"
+    ]
+    cur_status = st.session_state.get("proj_status", "📝 お見積り中")
+    status_idx = status_list.index(cur_status) if cur_status in status_list else 0
+
+    st.selectbox(
+        "進捗ステータス",
+        status_list,
+        index=status_idx,
+        key="proj_status"
+    )
+
+    st.text_area(
+        "案件メモ・備忘録（任意）",
+        value=st.session_state.get("proj_memo", ""),
+        placeholder="例: BGM素材受領済み。フォーマット48kHz/24bit。修正2回まで無料。",
+        height=90,
+        key="proj_memo"
+    )
+
+    col_sb1, col_sb2 = st.columns([1, 1])
+    with col_sb1:
+        if st.button("💾 案件を保存", type="primary", use_container_width=True, key="btn_save_proj"):
+            saved_title = save_current_project_data()
+            st.toast(f"✅ 案件「{saved_title}」を保存しました！", icon="💾")
+            st.rerun()
+
+    with col_sb2:
+        if current_active_id != "new":
+            if st.button("🗑️ 案件を削除", use_container_width=True, key="btn_del_proj"):
+                delete_active_project()
+                st.toast("🗑️ 案件を削除しました。", icon="🗑️")
+                st.rerun()
+
+    st.markdown("---")
+
+    with st.expander("📦 バックアップ / 復元"):
+        st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">PCに全案件データを保存、または保存ファイルから復元できます。</div>', unsafe_allow_html=True)
+        all_proj_json = json.dumps(load_projects(), ensure_ascii=False, indent=2)
+        st.download_button(
+            label="📥 案件データを保存 (JSON)",
+            data=all_proj_json,
+            file_name=f"ma_assistant_projects_{datetime.date.today().strftime('%Y%m%d')}.json",
+            mime="application/json",
+            use_container_width=True,
+            key="dl_backup_btn"
+        )
+
+        uploaded_backup = st.file_uploader("📤 JSONバックアップを復元", type=["json"], key="upload_backup")
+        if uploaded_backup is not None:
+            if st.button("復元を実行", key="btn_restore"):
+                try:
+                    restore_data = json.load(uploaded_backup)
+                    if isinstance(restore_data, list):
+                        save_projects(restore_data)
+                        st.success("✅ データを復元しました！")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"復元エラー: {e}")
+
+
+# ==========================================
+# アプリケーションヘッダー & アクティブ案件バー
 # ==========================================
 st.markdown('<div class="main-header">🎙️ 音声編集（MA）業務アシスタント</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">見積もり計算から制作中のファイル送信・やり取りメッセージ、納品後の評価コメントまでをワンストップで作成します。</div>', unsafe_allow_html=True)
+
+# アクティブ案件情報バー
+active_name = st.session_state.get("proj_client_name", "").strip()
+active_proj = st.session_state.get("proj_project_name", "").strip()
+active_status = st.session_state.get("proj_status", "📝 お見積り中")
+
+if active_name and active_proj:
+    current_proj_label = f"{active_name} ｜ {active_proj}"
+elif active_name:
+    current_proj_label = f"{active_name}（案件名未定）"
+elif active_proj:
+    current_proj_label = f"{active_proj}"
+else:
+    current_proj_label = "＋ 新規案件（未保存）"
+
+status_class = "status-estimate"
+if "🎧" in active_status:
+    status_class = "status-working"
+elif "🔄" in active_status:
+    status_class = "status-retake"
+elif "📦" in active_status:
+    status_class = "status-delivery"
+elif "✅" in active_status:
+    status_class = "status-done"
+
+col_bar1, col_bar2 = st.columns([5, 1])
+with col_bar1:
+    bar_html = (
+        f'<div style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 10px; padding: 8px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 0.6rem;">'
+        f'<span style="font-size: 0.82rem; font-weight: 800; color: #475569; letter-spacing: 0.5px;">📁 進行中の案件:</span>'
+        f'<span style="font-size: 0.98rem; font-weight: 700; color: #1E3A8A;">{current_proj_label}</span>'
+        f'<span class="status-badge {status_class}">{active_status}</span>'
+        f'</div>'
+    )
+    st.markdown(bar_html, unsafe_allow_html=True)
+with col_bar2:
+    if st.button("💾 案件を保存", key="btn_quick_save", type="primary", use_container_width=True):
+        saved_title = save_current_project_data()
+        st.toast(f"✅ 案件「{saved_title}」を保存しました！", icon="💾")
+        st.rerun()
 
 # 3つのタブを作成
 tab1, tab2, tab3 = st.tabs([
@@ -445,9 +847,23 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-        # 宛名・案件名
-        client_name = st.text_input("クライアント名（任意）", placeholder="例: 〇〇 様")
-        project_title = st.text_input("案件名・案件全体の概要（任意）", placeholder="例: レギュラー番組 ＋ 番宣CM制作 MA作業")
+        # 宛名・案件名（全タブ連動）
+        client_name = st.text_input(
+            "クライアント名（任意）",
+            value=st.session_state.get("t1_client_name", ""),
+            placeholder="例: 〇〇 様",
+            key="t1_client_name",
+            on_change=sync_client_name,
+            args=("t1_client_name",)
+        )
+        project_title = st.text_input(
+            "案件名・案件全体の概要（任意）",
+            value=st.session_state.get("t1_project_name", ""),
+            placeholder="例: レギュラー番組 ＋ 番宣CM制作 MA作業",
+            key="t1_project_name",
+            on_change=sync_project_name,
+            args=("t1_project_name",)
+        )
 
         genres_list = [
             "番組",
@@ -1170,16 +1586,22 @@ with tab2:
 
         comm_client_name = st.text_input(
             "宛名 / クライアント名（任意）",
+            value=st.session_state.get("t2_client_name", ""),
             placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
-            key="comm_client_name"
+            key="t2_client_name",
+            on_change=sync_client_name,
+            args=("t2_client_name",)
         )
 
         c_comm_p1, c_comm_p2 = st.columns([1, 1])
         with c_comm_p1:
             comm_project_name = st.text_input(
                 "案件名（任意）",
+                value=st.session_state.get("t2_project_name", ""),
                 placeholder="例: YouTube対談動画",
-                key="comm_project_name"
+                key="t2_project_name",
+                on_change=sync_project_name,
+                args=("t2_project_name",)
             )
         with c_comm_p2:
             comm_file_type = st.selectbox(
@@ -1430,28 +1852,40 @@ with tab3:
 
         eval_client_name = st.text_input(
             "クライアント名（任意）",
+            value=st.session_state.get("t3_client_name", ""),
             placeholder="例: 株式会社〇〇 様",
-            key="eval_client"
+            key="t3_client_name",
+            on_change=sync_client_name,
+            args=("t3_client_name",)
         )
 
         eval_project_name = st.text_input(
             "案件名（任意）",
+            value=st.session_state.get("t3_project_name", ""),
             placeholder="例: YouTube対談動画 MA作業",
-            key="eval_project"
+            key="t3_project_name",
+            on_change=sync_project_name,
+            args=("t3_project_name",)
         )
 
         # 1. やり取りの印象
+        impression_options = ["とてもスムーズ", "普通", "少し時間がかかった"]
+        cur_imp = st.session_state.get("eval_impression", "とてもスムーズ")
+        imp_idx = impression_options.index(cur_imp) if cur_imp in impression_options else 0
         impression = st.selectbox(
             "やり取りの印象",
-            ["とてもスムーズ", "普通", "少し時間がかかった"],
-            help="相手の対応スピードややり取りの円滑さに合わせてコメントのトーンを自動調整します。"
+            impression_options,
+            index=imp_idx,
+            help="相手の対応スピードややり取りの円滑さに合わせてコメントのトーンを自動調整します。",
+            key="eval_impression"
         )
 
         # 2. 次回へのアピール
         appeal_flag = st.checkbox(
             "次回へのアピールを含める",
-            value=True,
-            help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。"
+            value=st.session_state.get("eval_appeal_flag", True),
+            help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。",
+            key="eval_appeal_flag"
         )
 
     # --- 評価コメント生成ロジック ---
