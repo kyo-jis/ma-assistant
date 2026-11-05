@@ -150,7 +150,8 @@ def clear_quote_widget_keys():
         k for k in list(st.session_state.keys())
         if any(k.startswith(prefix) for prefix in [
             "genre_", "dur_", "step_", "cond_", "custom_h_",
-            "cm_pat_", "cm_cnt_", "fixed_sel_", "fn_", "fp_", "fc_", "wh_",
+            "cm_pat_", "cm_price_", "cm_cnt_", "cm_cond_", "cm_adj_custom_",
+            "fixed_sel_", "fn_", "fp_", "fc_", "wh_",
             "sched_del_", "sched_han_", "sched_rec_"
         ])
     ]
@@ -187,8 +188,14 @@ def load_project_into_session(project: dict):
                 st.session_state[f"cond_{iid}"] = it["condition"]
             if "cm_pattern" in it:
                 st.session_state[f"cm_pat_{iid}"] = it["cm_pattern"]
+            if "cm_unit_price" in it:
+                st.session_state[f"cm_price_{iid}"] = int(it["cm_unit_price"])
             if "cm_count" in it:
                 st.session_state[f"cm_cnt_{iid}"] = int(it["cm_count"])
+            if "cm_condition" in it:
+                st.session_state[f"cm_cond_{iid}"] = it["cm_condition"]
+            if "cm_custom_adj" in it:
+                st.session_state[f"cm_adj_custom_{iid}"] = int(it["cm_custom_adj"])
             if "fixed_choice" in it:
                 st.session_state[f"fixed_sel_{iid}"] = it["fixed_choice"]
             if "fixed_name" in it:
@@ -259,7 +266,10 @@ def save_current_project_data():
             item_copy["condition"] = st.session_state.get(f"cond_{iid}", "標準（収録状態良好: ±0h）")
         elif genre == "CM（15秒・30秒）":
             item_copy["cm_pattern"] = st.session_state.get(f"cm_pat_{iid}", "通常")
+            item_copy["cm_unit_price"] = st.session_state.get(f"cm_price_{iid}", 3000)
             item_copy["cm_count"] = st.session_state.get(f"cm_cnt_{iid}", 1)
+            item_copy["cm_condition"] = st.session_state.get(f"cm_cond_{iid}", "標準（追加補正なし: ±0円）")
+            item_copy["cm_custom_adj"] = st.session_state.get(f"cm_adj_custom_{iid}", 0)
         elif genre == "固定単価・レギュラー番組":
             item_copy["fixed_choice"] = st.session_state.get(f"fixed_sel_{iid}", "")
             item_copy["fixed_name"] = st.session_state.get(f"fn_{iid}", "")
@@ -1032,19 +1042,110 @@ with tab1:
                     item_breakdown_text = f"{duration_val:.1f}分（約{final_hours:.1f}h × 3,000円）= {item_price_base:,}円"
 
                 elif selected_genre == "CM（15秒・30秒）":
-                    c_cm1, c_cm2 = st.columns(2)
+                    c_cm1, c_cm2, c_cm3 = st.columns([2, 2, 2])
                     with c_cm1:
-                        cm_idx = 1 if item.get("cm_pattern") == "お得意様" else 0
-                        cm_pattern = st.radio("取引先パターン", ["通常", "お得意様"], index=cm_idx, horizontal=True, key=f"cm_pat_{item_id}")
-                        item["cm_pattern"] = cm_pattern
+                        cm_options = ["通常（3,000円）", "お得意様（2,000円）", "✏️ 単価直接指定"]
+                        cur_pat = item.get("cm_pattern", "通常")
+                        if "お得意様" in cur_pat:
+                            cm_pat_idx = 1
+                        elif "直接指定" in cur_pat:
+                            cm_pat_idx = 2
+                        else:
+                            cm_pat_idx = 0
+                        cm_pattern = st.radio("取引先パターン", cm_options, index=cm_pat_idx, key=f"cm_pat_{item_id}")
+                        item["cm_pattern"] = "お得意様" if "お得意様" in cm_pattern else ("✏️ 単価直接指定" if "直接指定" in cm_pattern else "通常")
+
                     with c_cm2:
-                        cm_cnt_val = int(item.get("cm_count", 1))
-                        cm_count = st.number_input("本数", min_value=1, max_value=100, value=cm_cnt_val, step=1, key=f"cm_cnt_{item_id}")
+                        price_key = f"cm_price_{item_id}"
+                        last_pat_key = f"last_cm_pat_{item_id}"
+                        if last_pat_key not in st.session_state:
+                            st.session_state[last_pat_key] = item["cm_pattern"]
+
+                        if st.session_state[last_pat_key] != item["cm_pattern"]:
+                            if "お得意様" in item["cm_pattern"]:
+                                st.session_state[price_key] = 2000
+                            elif "通常" in item["cm_pattern"]:
+                                st.session_state[price_key] = 3000
+                            st.session_state[last_pat_key] = item["cm_pattern"]
+
+                        if price_key not in st.session_state:
+                            st.session_state[price_key] = int(item.get("cm_unit_price", 2000 if "お得意様" in cm_pattern else 3000))
+
+                        u_price = st.number_input(
+                            "単価（円/本）",
+                            min_value=500,
+                            max_value=100000,
+                            step=500,
+                            key=price_key
+                        )
+                        item["cm_unit_price"] = u_price
+
+                    with c_cm3:
+                        cnt_key = f"cm_cnt_{item_id}"
+                        if cnt_key not in st.session_state:
+                            st.session_state[cnt_key] = int(item.get("cm_count", 1))
+                        cm_count = st.number_input(
+                            "本数",
+                            min_value=1,
+                            max_value=100,
+                            step=1,
+                            key=cnt_key
+                        )
                         item["cm_count"] = cm_count
-                    u_price = 2000 if cm_pattern == "お得意様" else 3000
-                    item_price_base = u_price * cm_count
-                    item_detail_text = f"CM（15秒・30秒）（{u_price:,}円/本）× {cm_count}本"
-                    item_breakdown_text = f"{u_price:,}円 × {cm_count}本 = {item_price_base:,}円"
+
+                    # CM素材状態・工数補正
+                    col_cm_c1, col_cm_c2 = st.columns([3, 2])
+                    with col_cm_c1:
+                        cm_condition_options = [
+                            "標準（追加補正なし: ±0円）",
+                            "ノイズやや多め・整音あり（+1,000円/本）",
+                            "ノイズ多め・要整音（+2,000円/本）",
+                            "素材難度高・音効増（+3,000円/本）",
+                            "まとめ割・お値引き（-500円/本）",
+                            "手動補正指定（1本当たりの金額入力）"
+                        ]
+                        cur_cm_cond = item.get("cm_condition", "標準（追加補正なし: ±0円）")
+                        cm_cond_idx = cm_condition_options.index(cur_cm_cond) if cur_cm_cond in cm_condition_options else 0
+                        selected_cm_cond = st.selectbox(
+                            "素材状態・工数補正（任意）",
+                            cm_condition_options,
+                            index=cm_cond_idx,
+                            key=f"cm_cond_{item_id}"
+                        )
+                        item["cm_condition"] = selected_cm_cond
+
+                    cm_adj_price = 0
+                    if "+1,000円" in selected_cm_cond:
+                        cm_adj_price = 1000
+                    elif "+2,000円" in selected_cm_cond:
+                        cm_adj_price = 2000
+                    elif "+3,000円" in selected_cm_cond:
+                        cm_adj_price = 3000
+                    elif "-500円" in selected_cm_cond:
+                        cm_adj_price = -500
+                    elif "手動補正指定" in selected_cm_cond:
+                        with col_cm_c2:
+                            custom_adj_key = f"cm_adj_custom_{item_id}"
+                            if custom_adj_key not in st.session_state:
+                                st.session_state[custom_adj_key] = int(item.get("cm_custom_adj", 0))
+                            cm_adj_price = st.number_input(
+                                "1本当たりの手動補正額（円）",
+                                min_value=-50000,
+                                max_value=50000,
+                                step=500,
+                                key=custom_adj_key
+                            )
+                            item["cm_custom_adj"] = cm_adj_price
+
+                    final_unit_price = max(500, u_price + cm_adj_price)
+                    item_price_base = final_unit_price * cm_count
+
+                    cond_note = f"（{selected_cm_cond.split('（')[0]}）" if ("±0円" not in selected_cm_cond and "手動" not in selected_cm_cond) else ""
+                    item_detail_text = f"CM（15秒・30秒）{cond_note}（{final_unit_price:,}円/本）× {cm_count}本"
+                    if cm_adj_price != 0:
+                        item_breakdown_text = f"（単価 {u_price:,}円 ＋ 補正 {cm_adj_price:+,}円）× {cm_count}本 = {item_price_base:,}円"
+                    else:
+                        item_breakdown_text = f"{final_unit_price:,}円 × {cm_count}本 = {item_price_base:,}円"
 
                 elif selected_genre == "固定単価・レギュラー番組":
                     custom_programs = load_custom_programs()
@@ -1380,7 +1481,7 @@ with tab1:
             | **YouTube・配信** | 6,000円 | 9,000円 | 12,000円 | 24,000円 | 30分超: 400円/分 |
             | **ドラマ・自主映画** | 12,000円 | 18,000円 | 24,000円 | 48,000円 | 30分超: 800円/分 |
             
-            - **CM（15秒・30秒）**: 通常 3,000円 / お得意様 2,000円（本数計算）
+            - **CM（15秒・30秒）**: 通常 3,000円 / お得意様 2,000円（単価の自由指定・素材補正も可能）
             - **固定単価・レギュラー番組**: 番組ごとに設定した単価 × 本数
             - **その他（作業時間計算）**: 1時間あたり 3,000円
             """)
