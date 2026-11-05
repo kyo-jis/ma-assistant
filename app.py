@@ -1455,22 +1455,33 @@ with tab1:
                 ]
             )
 
-            retake_policy = st.selectbox(
+            retake_policy_options = [
+                "2回まで無料対応（編集直しによる素材差し替え等は別途費用が掛かる場合もございます）",
+                "2回まで無料対応（当方のミス・見落とし等は無償対応）",
+                "1回まで無料対応（音量バランス等の軽微な微調整）",
+                "要相談（修正内容・工数に応じてご相談）",
+                "記載しない",
+                "✏️ 直接入力"
+            ]
+            retake_policy_choice = st.selectbox(
                 "修正対応の規定",
-                [
-                    "2回まで無料対応（当方のミス・見落とし等は無償対応）",
-                    "2回まで無料対応（素材差し替え等は追加 3,000円/時間）",
-                    "1回まで無料対応（音量バランス等の軽微な微調整）",
-                    "要相談（追加調整は 3,000円/時間 にて対応）",
-                    "記載しない"
-                ],
+                retake_policy_options,
                 index=4
             )
+            if retake_policy_choice == "✏️ 直接入力":
+                custom_retake = st.text_input(
+                    "修正対応の直接入力",
+                    placeholder="例: 2回まで無料対応（編集直しによる素材差し替え等は別途）",
+                    key="custom_retake_policy"
+                )
+                retake_policy = custom_retake.strip() if custom_retake.strip() else "記載しない"
+            else:
+                retake_policy = retake_policy_choice
 
             include_rework_fee_note = st.checkbox(
-                "素材差し替え・構成変更に関する追加費用（3,000円/時間）の注記を含める",
+                "編集直し・素材差し替えに関する追加費用の注記を含める",
                 value=False,
-                help="クライアント都合の素材差し替えや再収録、構成変更による再作業は追加見積もり（3,000円/時）となる旨の防衛注記です。"
+                help="クライアント都合の映像編集直しや素材差し替え、構成変更による再作業は別途費用相談となる旨の注記です。"
             )
 
         with st.expander("ℹ️ 料金テーブルの確認（基準レート）"):
@@ -1625,7 +1636,7 @@ with tab1:
         if retake_policy != "記載しない":
             spec_lines.append(f"・修正対応： {retake_policy}")
         if include_rework_fee_note:
-            spec_lines.append("※大幅な素材の差し替え、新規ナレーションの追加、構成変更等に伴う再作業は、別途追加作業費（3,000円/時間）のご相談とさせていただきます。")
+            spec_lines.append("※編集直しによる素材差し替え、新規ナレーションの追加、構成変更等に伴う再作業は、別途費用が掛かる場合もございます。")
 
         raw_audio_note_text = ""
         if include_raw_audio_note:
