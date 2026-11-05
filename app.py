@@ -1246,7 +1246,15 @@ with tab1:
                             st.rerun()
 
         # 税金・表記オプション
-        tax_option = st.radio("消費税の表示", ["税込（内税表記）", "税込（10%）", "税抜（+消費税）"], index=0, horizontal=True)
+        tax_options = ["税込（内税表記）", "税抜（+消費税）", "税込（10%内訳明記）"]
+        tax_captions = ["主にココナラ", "主にランサーズ", "企業・請求書向け"]
+        tax_option = st.radio(
+            "消費税の表示",
+            tax_options,
+            captions=tax_captions,
+            index=0,
+            horizontal=True
+        )
 
         st.markdown("---")
         st.markdown("""
@@ -1501,11 +1509,11 @@ with tab1:
     total_price_base = sum(res["price_base"] for res in items_calculation_results)
 
     # 税計算
-    if tax_option == "税込（10%）":
+    if "10%" in tax_option:
         display_total = int(round(total_price_base * 1.10))
         price_label = f"{display_total:,} 円（税込）"
         tax_detail = f"税抜合計: ¥{total_price_base:,} / 消費税(10%): ¥{int(round(total_price_base * 0.10)):,}"
-    elif tax_option == "税抜（+消費税）":
+    elif "税抜" in tax_option:
         display_total = total_price_base
         tax_amount = int(round(total_price_base * 0.10))
         price_label = f"{display_total:,} 円（税抜 / 税込 {display_total + tax_amount:,} 円）"
