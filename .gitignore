@@ -3,3 +3,9 @@ __pycache__/
 .streamlit/secrets.toml
 .venv/
 venv/
+
+# User data files
+projects_data.json
+signatures_data.json
+custom_programs.json
+

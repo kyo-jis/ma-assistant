@@ -55,6 +55,51 @@ def save_custom_programs(programs: list[dict]):
         st.error(f"番組データの保存に失敗しました: {e}")
 
 # ==========================================
+# 署名データ（本名 / ココナラ・ランサーズ）の読み書き
+# ==========================================
+SIGNATURES_FILE = os.path.join(os.path.dirname(__file__), "signatures_data.json")
+
+def load_signatures() -> dict:
+    default_sig = {
+        "coconala": "MAクリエイター（ココナラ・ランサーズ）",
+        "realname": "山田 太郎\n音声編集・MAミキサー\nMail: info@example.com"
+    }
+    if not os.path.exists(SIGNATURES_FILE):
+        try:
+            with open(SIGNATURES_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_sig, f, ensure_ascii=False, indent=2)
+        except Exception:
+            return default_sig
+        return default_sig
+    try:
+        with open(SIGNATURES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else default_sig
+    except Exception:
+        return default_sig
+
+def save_signatures(sig_data: dict):
+    try:
+        with open(SIGNATURES_FILE, "w", encoding="utf-8") as f:
+            json.dump(sig_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"署名データの保存に失敗しました: {e}")
+
+def get_signature_text(sig_type: str) -> str:
+    if sig_type == "なし":
+        return ""
+    sigs = load_signatures()
+    if sig_type == "ココナラ・ランサーズ用":
+        sig_body = sigs.get("coconala", "").strip()
+    elif sig_type == "本名・ビジネス用":
+        sig_body = sigs.get("realname", "").strip()
+    else:
+        return ""
+    if not sig_body:
+        return ""
+    return f"\n\n{sig_body}"
+
+# ==========================================
 # プロジェクト（案件データ）の読み書き・永続化
 # ==========================================
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), "projects_data.json")
@@ -854,6 +899,29 @@ with st.sidebar:
                         st.rerun()
                 except Exception as e:
                     st.error(f"復元エラー: {e}")
+
+    with st.expander("🖋️ 署名の事前登録・編集"):
+        st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">登録した署名は、各メッセージの末尾でワンクリックで使い分けできます。</div>', unsafe_allow_html=True)
+        cur_sigs = load_signatures()
+        sig_coco_val = st.text_area(
+            "ココナラ・ランサーズ用（クリエイター名・屋号等）",
+            value=cur_sigs.get("coconala", ""),
+            height=70,
+            key="sig_coco_val"
+        )
+        sig_real_val = st.text_area(
+            "本名・ビジネス用（氏名・肩書・メール等）",
+            value=cur_sigs.get("realname", ""),
+            height=90,
+            key="sig_real_val"
+        )
+        if st.button("💾 署名設定を保存", key="btn_save_sig_sb", use_container_width=True):
+            save_signatures({
+                "coconala": sig_coco_val.strip(),
+                "realname": sig_real_val.strip()
+            })
+            st.toast("✅ 署名を保存しました！", icon="🖋️")
+            st.rerun()
 
 
 # ==========================================
@@ -1695,6 +1763,27 @@ with tab1:
         coconala_work_part = f"\n\n{work_block_coconala}\n" if work_block_coconala else ""
         detailed_work_part = f"\n\n{work_block_detailed}" if work_block_detailed else ""
 
+        st.markdown("""
+        <div class="section-title">
+            <span class="step-badge step-badge-blue">MESSAGE</span>
+            <span>コピペ用送信メッセージ</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_sig_t1_1, col_sig_t1_2 = st.columns([3, 2])
+        with col_sig_t1_1:
+            selected_sig_t1 = st.radio(
+                "🖋️ 末尾の署名",
+                ["ココナラ・ランサーズ用", "本名・ビジネス用", "なし"],
+                index=0,
+                horizontal=True,
+                key="sig_choice_t1"
+            )
+        with col_sig_t1_2:
+            st.caption("※署名はサイドバー「🖋️ 署名の事前登録・編集」で変更可能")
+
+        sig_append_t1 = get_signature_text(selected_sig_t1)
+
         # パターン1: ココナラ・クラウドソーシング特化型
         quote_msg_coconala = f"""{client_display}
 
@@ -1707,7 +1796,7 @@ with tab1:
 {raw_audio_note_text}
 {schedule_block}{spec_block}{coconala_work_part}
 上記内容でご検討のほど、よろしくお願いいたします。
-日程やご予算についてのご相談もお気軽にお知らせください。"""
+日程やご予算についてのご相談もお気軽にお知らせください。""" + sig_append_t1
 
         # パターン2: シンプル（チャット・即答用）
         simple_sched = f"\n・希望納期: {schedule_delivery_summary.strip()}" if schedule_delivery_summary.strip() else ""
@@ -1726,7 +1815,7 @@ with tab1:
 ・内容: {simple_items_summary}
 ・合計金額: {price_label}{simple_sched}{simple_sched_note}
 
-仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！"""
+仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！""" + sig_append_t1
 
         # パターン3: ビジネスメール・詳細版
         quote_msg_detailed = f"""{client_display}
@@ -1744,13 +1833,9 @@ with tab1:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 スケジュール等につきまして、調整のご要望がございましたらお申し付けくださいませ。
-ご検討のほど、何卒よろしくお願い申し上げます。"""
+ご検討のほど、何卒よろしくお願い申し上げます。""" + sig_append_t1
 
         st.markdown("""
-        <div class="section-title">
-            <span class="step-badge step-badge-blue">MESSAGE</span>
-            <span>コピペ用送信メッセージ</span>
-        </div>
         <div class="copy-tip">
             💡 各タブ右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
         </div>
@@ -1880,6 +1965,14 @@ with tab2:
             key="comm_closing"
         )
 
+        comm_sig = st.radio(
+            "🖋️ メッセージ末尾の署名",
+            ["ココナラ・ランサーズ用", "本名・ビジネス用", "なし"],
+            index=0,
+            horizontal=True,
+            key="sig_comm"
+        )
+
     # --- メッセージ生成ロジック ---
     def generate_comm_msg(tone: str) -> str:
         c_header = f"{comm_client_name.strip()}\n\n" if comm_client_name.strip() else ""
@@ -1905,6 +1998,8 @@ with tab2:
                     closing_text = "恐れ入りますが、内容をご確認いただけますようお願い申し上げます。\n修正や追加のご要望がございましたら、何なりとお申し付けくださいませ。"
             else:
                 closing_text = comm_closing
+
+        sig_text = get_signature_text(comm_sig)
 
         if comm_pattern == "🎵 ファイル送付（基本・シンプル）":
             if tone == "simple":
@@ -2000,6 +2095,9 @@ with tab2:
         if closing_text:
             parts.append(closing_text.strip())
 
+        if sig_text.strip():
+            parts.append(sig_text.strip())
+
         raw_msg = "\n\n".join(parts)
         cleaned_msg = re.sub(r'\n{3,}', '\n\n', raw_msg.strip())
         return cleaned_msg
@@ -2094,6 +2192,14 @@ with tab3:
             value=st.session_state.get("eval_appeal_flag", True),
             help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。",
             key="eval_appeal_flag"
+        )
+
+        eval_sig = st.radio(
+            "🖋️ メッセージ末尾の署名",
+            ["ココナラ・ランサーズ用", "本名・ビジネス用", "なし"],
+            index=0,
+            horizontal=True,
+            key="sig_eval"
         )
 
     # --- 評価コメント生成ロジック ---
@@ -2200,6 +2306,11 @@ with tab3:
 敬具"""
 
         msg_review = f"ご丁寧にご対応いただき、無事にお取引を完了することができました。最後までお付き合いいただきありがとうございました。{appeal_review}"
+
+    sig_eval_append = get_signature_text(eval_sig)
+    msg_simple += sig_eval_append
+    msg_standard += sig_eval_append
+    msg_formal += sig_eval_append
 
     # --- 右カラム: 生成結果 ---
     with col_eval_result:
