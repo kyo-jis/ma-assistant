@@ -8,4 +8,5 @@ venv/
 projects_data.json
 signatures_data.json
 custom_programs.json
+sync_config.json
 

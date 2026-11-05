@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import streamlit as st
 
 # ==========================================
@@ -98,6 +99,69 @@ def get_signature_text(sig_type: str) -> str:
     if not sig_body:
         return ""
     return f"\n\n{sig_body}"
+
+# ==========================================
+# Google ドライブ / 外部フォルダ同期設定・処理
+# ==========================================
+SYNC_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "sync_config.json")
+DEFAULT_SYNC_DIR = r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント"
+
+def load_sync_config() -> dict:
+    default_cfg = {
+        "sync_dir": DEFAULT_SYNC_DIR,
+        "auto_sync": True
+    }
+    if not os.path.exists(SYNC_CONFIG_FILE):
+        return default_cfg
+    try:
+        with open(SYNC_CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else default_cfg
+    except Exception:
+        return default_cfg
+
+def save_sync_config(cfg: dict):
+    try:
+        with open(SYNC_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def sync_backup_to_dir(target_dir: str) -> tuple[bool, str]:
+    if not target_dir or not os.path.exists(target_dir):
+        return False, "指定された同期先フォルダが見つかりません。"
+    try:
+        # projects_data.json のコピー
+        if os.path.exists(PROJECTS_FILE):
+            dest_proj = os.path.join(target_dir, "projects_data.json")
+            shutil.copy2(PROJECTS_FILE, dest_proj)
+        # signatures_data.json のコピー
+        if os.path.exists(SIGNATURES_FILE):
+            dest_sig = os.path.join(target_dir, "signatures_data.json")
+            shutil.copy2(SIGNATURES_FILE, dest_sig)
+        # 日付入りバックアップも保存（履歴用）
+        today_str = datetime.date.today().strftime("%Y%m%d")
+        dest_dated = os.path.join(target_dir, f"backup_projects_{today_str}.json")
+        if os.path.exists(PROJECTS_FILE):
+            shutil.copy2(PROJECTS_FILE, dest_dated)
+        return True, f"Googleドライブにバックアップを保存しました！（{os.path.basename(dest_proj)}）"
+    except Exception as e:
+        return False, f"同期エラー: {e}"
+
+def restore_from_sync_dir(target_dir: str) -> tuple[bool, str]:
+    if not target_dir or not os.path.exists(target_dir):
+        return False, "指定された同期先フォルダが見つかりません。"
+    src_proj = os.path.join(target_dir, "projects_data.json")
+    if not os.path.exists(src_proj):
+        return False, f"同期先に案件データ ({os.path.basename(src_proj)}) が見つかりません。"
+    try:
+        shutil.copy2(src_proj, PROJECTS_FILE)
+        src_sig = os.path.join(target_dir, "signatures_data.json")
+        if os.path.exists(src_sig):
+            shutil.copy2(src_sig, SIGNATURES_FILE)
+        return True, "Googleドライブのデータから最新状態に復元しました！"
+    except Exception as e:
+        return False, f"復元エラー: {e}"
 
 # ==========================================
 # プロジェクト（案件データ）の読み書き・永続化
@@ -197,7 +261,15 @@ def clear_quote_widget_keys():
             "genre_", "dur_", "step_", "cond_", "custom_h_",
             "cm_pat_", "cm_price_", "cm_cnt_", "cm_cond_", "cm_adj_custom_",
             "fixed_sel_", "fn_", "fp_", "fc_", "wh_",
-            "sched_del_", "sched_han_", "sched_rec_"
+            "sched_del_", "sched_han_", "sched_rec_",
+            "d_date_", "d_time_", "d_custom_", "h_rcv_", "h_rcv_sel_", "h_rcv_custom_", "h_date_", "h_time_",
+            "w_date_", "w_time_", "w_custom_", "del_w_", "work_day_ids_", "next_work_day_id_",
+            "s_chk_", "m_chk_", "f_chk_", "free_delivery_input", "free_handover_input", "free_work_input",
+            "quote_tax_option", "quote_sched_mode", "quote_sched_disp_style", "quote_sched_res_type", "quote_inc_delay_note",
+            "chk_inc_work_contents", "chk_task1", "chk_task2", "chk_task3", "chk_task4", "txt_custom_task",
+            "quote_audio_spec", "quote_inc_lufs14", "quote_inc_raw_note", "quote_audio_fmt",
+            "quote_retake_choice", "custom_retake_policy", "quote_inc_rework_note",
+            "sig_choice_t1", "sig_comm", "sig_eval"
         ])
     ]
     for k in keys_to_delete:
@@ -219,6 +291,7 @@ def load_project_into_session(project: dict):
     st.session_state.t3_client_name = st.session_state.proj_client_name
     st.session_state.t3_project_name = st.session_state.proj_project_name
 
+    # 1. 見積もりアイテム復元
     if "quote_items" in project and project["quote_items"]:
         st.session_state.quote_items = project["quote_items"]
         max_id = max([it.get("id", 1) for it in project["quote_items"]], default=1)
@@ -252,6 +325,71 @@ def load_project_into_session(project: dict):
             if "work_hours" in it:
                 st.session_state[f"wh_{iid}"] = float(it["work_hours"])
 
+    # 2. 見積もり詳細設定（税・スケジュール・仕様・修正規定・署名等）の復元
+    qs = project.get("quote_settings", {})
+    if qs:
+        if "tax_option" in qs:
+            st.session_state.quote_tax_option = qs["tax_option"]
+        if "schedule_mode" in qs:
+            st.session_state.quote_sched_mode = qs["schedule_mode"]
+        if "sched_display_style" in qs:
+            st.session_state.quote_sched_disp_style = qs["sched_display_style"]
+        if "schedule_reservation_type" in qs:
+            st.session_state.quote_sched_res_type = qs["schedule_reservation_type"]
+        if "include_delay_note" in qs:
+            st.session_state.quote_inc_delay_note = qs["include_delay_note"]
+
+        for k in ["use_delivery", "use_handover", "use_work"]:
+            if k in qs:
+                short_k = k.replace("use_", "")
+                for pfx in ["s_chk_", "m_chk_", "f_chk_"]:
+                    st.session_state[f"{pfx}{short_k}"] = qs[k]
+
+        if "free_delivery_input" in qs:
+            st.session_state.free_delivery_input = qs["free_delivery_input"]
+        if "free_handover_input" in qs:
+            st.session_state.free_handover_input = qs["free_handover_input"]
+        if "free_work_input" in qs:
+            st.session_state.free_work_input = qs["free_work_input"]
+
+        sched_items = qs.get("schedule_items_data", {})
+        for sk, sval in sched_items.items():
+            if any(sk.startswith(dp) for dp in ["d_date_", "h_date_", "w_date_"]):
+                try:
+                    st.session_state[sk] = datetime.date.fromisoformat(sval)
+                except Exception:
+                    pass
+            else:
+                st.session_state[sk] = sval
+
+        if "include_work_contents" in qs:
+            st.session_state.chk_inc_work_contents = qs["include_work_contents"]
+        for tk in ["c_task1", "c_task2", "c_task3", "c_task4"]:
+            if tk in qs:
+                st.session_state[tk.replace("c_", "chk_")] = qs[tk]
+        if "c_custom_task" in qs:
+            st.session_state.txt_custom_task = qs["c_custom_task"]
+
+        if "audio_spec" in qs:
+            st.session_state.quote_audio_spec = qs["audio_spec"]
+        if "include_lufs14_note" in qs:
+            st.session_state.quote_inc_lufs14 = qs["include_lufs14_note"]
+        if "include_raw_audio_note" in qs:
+            st.session_state.quote_inc_raw_note = qs["include_raw_audio_note"]
+        if "audio_format" in qs:
+            st.session_state.quote_audio_fmt = qs["audio_format"]
+
+        if "retake_policy_choice" in qs:
+            st.session_state.quote_retake_choice = qs["retake_policy_choice"]
+        if "custom_retake" in qs:
+            st.session_state.custom_retake_policy = qs["custom_retake"]
+        if "include_rework_fee_note" in qs:
+            st.session_state.quote_inc_rework_note = qs["include_rework_fee_note"]
+
+        if "sig_choice_t1" in qs:
+            st.session_state.sig_choice_t1 = qs["sig_choice_t1"]
+
+    # 3. 連絡タブの復元
     comm_data = project.get("comm_data", {})
     st.session_state.comm_file_type = comm_data.get("file_type", "ミックスファイル")
     st.session_state.comm_pattern = comm_data.get("pattern", "🎵 ファイル送付（基本・シンプル）")
@@ -259,10 +397,15 @@ def load_project_into_session(project: dict):
     st.session_state.comm_url_meta = comm_data.get("url_meta", "")
     st.session_state.comm_free_text = comm_data.get("free_text", "")
     st.session_state.comm_closing = comm_data.get("closing", "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。")
+    if "sig_comm" in comm_data:
+        st.session_state.sig_comm = comm_data["sig_comm"]
 
+    # 4. 納品タブの復元
     eval_data = project.get("eval_data", {})
     st.session_state.eval_impression = eval_data.get("impression", "とてもスムーズ")
     st.session_state.eval_appeal_flag = eval_data.get("appeal_flag", True)
+    if "sig_eval" in eval_data:
+        st.session_state.sig_eval = eval_data["sig_eval"]
 
 def reset_to_new_project():
     clear_quote_widget_keys()
@@ -283,15 +426,40 @@ def reset_to_new_project():
     st.session_state.quote_items = [{"id": 1, "genre": "番組", "duration": 15.0}]
     st.session_state.next_item_id = 2
 
+    # 見積もり詳細設定のデフォルト
+    st.session_state.quote_tax_option = "税込（内税表記）"
+    st.session_state.quote_sched_mode = "📅 カレンダーから設定（おすすめ）"
+    st.session_state.quote_sched_disp_style = "📋 案件ごとにまとめて表示（おすすめ）"
+    st.session_state.quote_sched_res_type = "なし（記載しない）"
+    st.session_state.quote_inc_delay_note = True
+    st.session_state.chk_inc_work_contents = True
+    st.session_state.chk_task1 = True
+    st.session_state.chk_task2 = True
+    st.session_state.chk_task3 = True
+    st.session_state.chk_task4 = True
+    st.session_state.txt_custom_task = ""
+    st.session_state.quote_audio_spec = "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)"
+    st.session_state.quote_inc_lufs14 = False
+    st.session_state.quote_inc_raw_note = False
+    st.session_state.quote_audio_fmt = "WAV (48kHz / 24bit)"
+    st.session_state.quote_retake_choice = "記載しない"
+    st.session_state.custom_retake_policy = ""
+    st.session_state.quote_inc_rework_note = False
+    st.session_state.sig_choice_t1 = "ココナラ・ランサーズ用"
+
+    # 連絡タブのデフォルト
     st.session_state.comm_file_type = "ミックスファイル"
     st.session_state.comm_pattern = "🎵 ファイル送付（基本・シンプル）"
     st.session_state.comm_url = ""
     st.session_state.comm_url_meta = ""
     st.session_state.comm_free_text = ""
     st.session_state.comm_closing = "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。"
+    st.session_state.sig_comm = "ココナラ・ランサーズ用"
 
+    # 納品タブのデフォルト
     st.session_state.eval_impression = "とてもスムーズ"
     st.session_state.eval_appeal_flag = True
+    st.session_state.sig_eval = "ココナラ・ランサーズ用"
 
 def save_current_project_data():
     projects = load_projects()
@@ -341,18 +509,62 @@ def save_current_project_data():
     status = st.session_state.get("proj_status", "📝 お見積り中")
     memo = st.session_state.get("proj_memo", "")
 
+    # スケジュール個別データの収集
+    schedule_items_data = {}
+    for k, v in list(st.session_state.items()):
+        if any(k.startswith(pfx) for pfx in [
+            "d_date_", "d_time_", "d_custom_", "h_rcv_", "h_rcv_sel_", "h_rcv_custom_",
+            "h_date_", "h_time_", "w_date_", "w_time_", "w_custom_",
+            "work_day_ids_", "next_work_day_id_"
+        ]):
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                schedule_items_data[k] = v.isoformat()
+            else:
+                schedule_items_data[k] = v
+
+    quote_settings = {
+        "tax_option": st.session_state.get("quote_tax_option", "税込（内税表記）"),
+        "schedule_mode": st.session_state.get("quote_sched_mode", "📅 案件ごとに個別に設定（推奨）" if len(st.session_state.quote_items) > 1 else "📅 カレンダーから設定（おすすめ）"),
+        "sched_display_style": st.session_state.get("quote_sched_disp_style", "📋 案件ごとにまとめて表示（おすすめ）"),
+        "schedule_reservation_type": st.session_state.get("quote_sched_res_type", "なし（記載しない）"),
+        "include_delay_note": st.session_state.get("quote_inc_delay_note", True),
+        "use_delivery": st.session_state.get("s_chk_del", st.session_state.get("m_chk_del", st.session_state.get("f_chk_del", True))),
+        "use_handover": st.session_state.get("s_chk_han", st.session_state.get("m_chk_han", st.session_state.get("f_chk_han", True))),
+        "use_work": st.session_state.get("s_chk_wrk", st.session_state.get("m_chk_wrk", st.session_state.get("f_chk_wrk", True))),
+        "free_delivery_input": st.session_state.get("free_delivery_input", ""),
+        "free_handover_input": st.session_state.get("free_handover_input", ""),
+        "free_work_input": st.session_state.get("free_work_input", ""),
+        "schedule_items_data": schedule_items_data,
+        "include_work_contents": st.session_state.get("chk_inc_work_contents", True),
+        "c_task1": st.session_state.get("chk_task1", True),
+        "c_task2": st.session_state.get("chk_task2", True),
+        "c_task3": st.session_state.get("chk_task3", True),
+        "c_task4": st.session_state.get("chk_task4", True),
+        "c_custom_task": st.session_state.get("txt_custom_task", ""),
+        "audio_spec": st.session_state.get("quote_audio_spec", "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)"),
+        "include_lufs14_note": st.session_state.get("quote_inc_lufs14", False),
+        "include_raw_audio_note": st.session_state.get("quote_inc_raw_note", False),
+        "audio_format": st.session_state.get("quote_audio_fmt", "WAV (48kHz / 24bit)"),
+        "retake_policy_choice": st.session_state.get("quote_retake_choice", "記載しない"),
+        "custom_retake": st.session_state.get("custom_retake_policy", ""),
+        "include_rework_fee_note": st.session_state.get("quote_inc_rework_note", False),
+        "sig_choice_t1": st.session_state.get("sig_choice_t1", "ココナラ・ランサーズ用")
+    }
+
     comm_data = {
         "file_type": st.session_state.get("comm_file_type", "ミックスファイル"),
         "pattern": st.session_state.get("comm_pattern", "🎵 ファイル送付（基本・シンプル）"),
         "url": st.session_state.get("comm_url", ""),
         "url_meta": st.session_state.get("comm_url_meta", ""),
         "free_text": st.session_state.get("comm_free_text", ""),
-        "closing": st.session_state.get("comm_closing", "")
+        "closing": st.session_state.get("comm_closing", ""),
+        "sig_comm": st.session_state.get("sig_comm", "ココナラ・ランサーズ用")
     }
 
     eval_data = {
         "impression": st.session_state.get("eval_impression", "とてもスムーズ"),
-        "appeal_flag": st.session_state.get("eval_appeal_flag", True)
+        "appeal_flag": st.session_state.get("eval_appeal_flag", True),
+        "sig_eval": st.session_state.get("sig_eval", "ココナラ・ランサーズ用")
     }
 
     current_id = st.session_state.get("active_project_id", "new")
@@ -368,6 +580,7 @@ def save_current_project_data():
             "created_at": now_str,
             "updated_at": now_str,
             "quote_items": st.session_state.quote_items,
+            "quote_settings": quote_settings,
             "comm_data": comm_data,
             "eval_data": eval_data
         }
@@ -384,6 +597,7 @@ def save_current_project_data():
                 p["memo"] = memo
                 p["updated_at"] = now_str
                 p["quote_items"] = st.session_state.quote_items
+                p["quote_settings"] = quote_settings
                 p["comm_data"] = comm_data
                 p["eval_data"] = eval_data
                 found = True
@@ -399,12 +613,21 @@ def save_current_project_data():
                 "created_at": now_str,
                 "updated_at": now_str,
                 "quote_items": st.session_state.quote_items,
+                "quote_settings": quote_settings,
                 "comm_data": comm_data,
                 "eval_data": eval_data
             }
             projects.insert(0, project_record)
 
     save_projects(projects)
+
+    # Googleドライブ自動バックアップ
+    sync_cfg = load_sync_config()
+    if sync_cfg.get("auto_sync", True):
+        sync_dir = sync_cfg.get("sync_dir", "").strip()
+        if sync_dir and os.path.exists(sync_dir):
+            sync_backup_to_dir(sync_dir)
+
     return display_name
 
 def delete_active_project():
@@ -876,8 +1099,62 @@ with st.sidebar:
 
     st.markdown("---")
 
-    with st.expander("📦 バックアップ / 復元"):
-        st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">PCに全案件データを保存、または保存ファイルから復元できます。</div>', unsafe_allow_html=True)
+    with st.expander("📦 バックアップ / 復元（Googleドライブ連携）"):
+        st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">全案件データのダウンロード/復元、およびGoogleドライブへの自動同期が可能です。</div>', unsafe_allow_html=True)
+
+        # --- Googleドライブ / 外部フォルダ同期設定 ---
+        st.markdown("##### 📁 Googleドライブ同期")
+        sync_cfg = load_sync_config()
+        cur_sync_dir = sync_cfg.get("sync_dir", DEFAULT_SYNC_DIR)
+        auto_sync_val = sync_cfg.get("auto_sync", True)
+
+        input_sync_dir = st.text_input(
+            "同期フォルダパス",
+            value=cur_sync_dir,
+            placeholder=r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント",
+            help="Google Drive for Desktop のマイドライブ内フォルダなどを指定できます（Macの場合はMac上のパスを指定）",
+            key="input_sync_dir"
+        )
+        ch_auto_sync = st.checkbox("案件保存時にGoogleドライブにも自動同期", value=auto_sync_val, key="chk_auto_sync")
+
+        # 設定変更時の保存
+        if input_sync_dir != cur_sync_dir or ch_auto_sync != auto_sync_val:
+            save_sync_config({"sync_dir": input_sync_dir, "auto_sync": ch_auto_sync})
+
+        # フォルダの存在チェック
+        is_dir_found = bool(input_sync_dir and os.path.exists(input_sync_dir))
+
+        if is_dir_found:
+            st.success("🟢 同期フォルダを認識しました")
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                if st.button("💾 今すぐ同期保存", use_container_width=True, key="btn_sync_save"):
+                    ok, msg = sync_backup_to_dir(input_sync_dir)
+                    if ok:
+                        st.toast(msg, icon="📁")
+                    else:
+                        st.error(msg)
+            with col_g2:
+                if st.button("📂 同期先から復元", use_container_width=True, key="btn_sync_load"):
+                    ok, msg = restore_from_sync_dir(input_sync_dir)
+                    if ok:
+                        st.toast(msg, icon="✅")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+        else:
+            st.markdown(
+                '<div style="font-size: 0.78rem; color: #B45309; background: #FEF3C7; padding: 6px 10px; border-radius: 6px; margin-bottom: 0.5rem;">'
+                '⚠️ 指定フォルダが未検出です。<br>'
+                '・<b>Windows</b>: Google Driveアプリで上記パスが存在するかご確認ください。<br>'
+                '・<b>Mac</b>: Mac用パス（例: <code>/Users/名前/Google Drive/...</code>）をご指定ください。<br>'
+                '・<b>Streamlit Cloud（ブラウザ）</b>: Web環境からは直接PCフォルダに書き込めないため、下の「📥 案件データを保存 (JSON)」から手動保存してください。'
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+        st.markdown("---")
+        st.markdown("##### 📥 ファイルで保存・復元")
         all_proj_json = json.dumps(load_projects(), ensure_ascii=False, indent=2)
         st.download_button(
             label="📥 案件データを保存 (JSON)",
@@ -1316,12 +1593,15 @@ with tab1:
         # 税金・表記オプション
         tax_options = ["税込（内税表記）", "税抜（+消費税）", "税込（10%内訳明記）"]
         tax_captions = ["主にココナラ", "主にランサーズ", "企業・請求書向け"]
+        cur_tax = st.session_state.get("quote_tax_option", "税込（内税表記）")
+        tax_idx = tax_options.index(cur_tax) if cur_tax in tax_options else 0
         tax_option = st.radio(
             "消費税の表示",
             tax_options,
             captions=tax_captions,
-            index=0,
-            horizontal=True
+            index=tax_idx,
+            horizontal=True,
+            key="quote_tax_option"
         )
 
         st.markdown("---")
@@ -1346,7 +1626,15 @@ with tab1:
                 "✏️ 自由に入力する（特殊な指定など）"
             ]
 
-        schedule_mode = st.radio("スケジュールの設定方法", schedule_mode_options, horizontal=True)
+        cur_sched_mode = st.session_state.get("quote_sched_mode", schedule_mode_options[0])
+        sched_mode_idx = schedule_mode_options.index(cur_sched_mode) if cur_sched_mode in schedule_mode_options else 0
+        schedule_mode = st.radio(
+            "スケジュールの設定方法",
+            schedule_mode_options,
+            index=sched_mode_idx,
+            horizontal=True,
+            key="quote_sched_mode"
+        )
 
         item_schedules = []
         sched_delivery_text = ""
@@ -1374,19 +1662,24 @@ with tab1:
             st.markdown("##### ⚙️ スケジュールの表示・表記設定")
             col_chk1, col_chk2, col_chk3 = st.columns(3)
             with col_chk1:
-                use_delivery = st.checkbox("納期を含める", value=True, key="m_chk_del")
+                use_delivery = st.checkbox("納期を含める", value=st.session_state.get("m_chk_del", True), key="m_chk_del")
             with col_chk2:
-                use_handover = st.checkbox("搬入日を含める", value=True, key="m_chk_han")
+                use_handover = st.checkbox("搬入日を含める", value=st.session_state.get("m_chk_han", True), key="m_chk_han")
             with col_chk3:
-                use_work = st.checkbox("作業日を含める", value=True, key="m_chk_wrk")
+                use_work = st.checkbox("作業日を含める", value=st.session_state.get("m_chk_wrk", True), key="m_chk_wrk")
 
+            cur_disp_style = st.session_state.get("quote_sched_disp_style", "📋 案件ごとにまとめて表示（おすすめ）")
+            disp_style_opts = [
+                "📋 案件ごとにまとめて表示（おすすめ）",
+                "📑 項目別（納期・搬入・作業日順）に表示"
+            ]
+            disp_idx = disp_style_opts.index(cur_disp_style) if cur_disp_style in disp_style_opts else 0
             sched_display_style = st.radio(
                 "メッセージ内の表記スタイル",
-                [
-                    "📋 案件ごとにまとめて表示（おすすめ）",
-                    "📑 項目別（納期・搬入・作業日順）に表示"
-                ],
+                disp_style_opts,
+                index=disp_idx,
                 horizontal=True,
+                key="quote_sched_disp_style",
                 help="お相手へのメッセージ内で、案件ごとにタイムラインをブロック分けして見せるか、納期・搬入日・作業日ごとに箇条書きにするかを選べます。"
             )
 
@@ -1408,59 +1701,64 @@ with tab1:
 
             col_chk1, col_chk2, col_chk3 = st.columns(3)
             with col_chk1:
-                use_delivery = st.checkbox("納期を含める", value=True, key="s_chk_del")
+                use_delivery = st.checkbox("納期を含める", value=st.session_state.get("s_chk_del", True), key="s_chk_del")
             with col_chk2:
-                use_handover = st.checkbox("搬入日を含める", value=True, key="s_chk_han")
+                use_handover = st.checkbox("搬入日を含める", value=st.session_state.get("s_chk_han", True), key="s_chk_han")
             with col_chk3:
-                use_work = st.checkbox("作業日を含める", value=True, key="s_chk_wrk")
+                use_work = st.checkbox("作業日を含める", value=st.session_state.get("s_chk_wrk", True), key="s_chk_wrk")
 
         else:
             # 自由入力モード
             with st.container(border=True):
                 sched_delivery_text = st.text_input(
                     "ご希望納期",
-                    value="1本目：11/3（火）中、2本目：11/10（火）まで",
+                    value=st.session_state.get("free_delivery_input", "1本目：11/3（火）中、2本目：11/10（火）まで"),
                     placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで",
                     key="free_delivery_input"
                 )
                 sched_handover_text = st.text_input(
                     "データご搬入",
-                    value="本編：未定、ナレ：11/2（月）21:30ごろ",
+                    value=st.session_state.get("free_handover_input", "本編：未定、ナレ：11/2（月）21:30ごろ"),
                     placeholder="例: 素材受領済み、または 本編：未定、ナレ：11/2（月）21:30ごろ",
                     key="free_handover_input"
                 )
                 sched_work_text = st.text_input(
                     "作業予定日",
-                    value="11/2（月）夜、11/4 夕方以降",
+                    value=st.session_state.get("free_work_input", "11/2（月）夜、11/4 夕方以降"),
                     placeholder="例: 11/2（月）夜、11/4 夕方以降",
                     key="free_work_input"
                 )
 
             col_chk1, col_chk2, col_chk3 = st.columns(3)
             with col_chk1:
-                use_delivery = st.checkbox("納期を含める", value=True, key="f_chk_del")
+                use_delivery = st.checkbox("納期を含める", value=st.session_state.get("f_chk_del", True), key="f_chk_del")
             with col_chk2:
-                use_handover = st.checkbox("搬入日を含める", value=True, key="f_chk_han")
+                use_handover = st.checkbox("搬入日を含める", value=st.session_state.get("f_chk_han", True), key="f_chk_han")
             with col_chk3:
-                use_work = st.checkbox("作業日を含める", value=True, key="f_chk_wrk")
+                use_work = st.checkbox("作業日を含める", value=st.session_state.get("f_chk_wrk", True), key="f_chk_wrk")
 
         st.markdown("**スケジュールの確保状況（相手に合わせて選択）**")
+        res_opts = [
+            "⚡ 先着順（新規・通常向け）",
+            "🤝 仮確保中（お得意様・リピーター向け）",
+            "なし（記載しない）"
+        ]
+        cur_res = st.session_state.get("quote_sched_res_type", "なし（記載しない）")
+        res_idx = res_opts.index(cur_res) if cur_res in res_opts else 2
         schedule_reservation_type = st.radio(
             "スケジュールの案内トーン",
-            [
-                "⚡ 先着順（新規・通常向け）",
-                "🤝 仮確保中（お得意様・リピーター向け）",
-                "なし（記載しない）"
-            ],
-            index=2,
+            res_opts,
+            index=res_idx,
             horizontal=True,
+            key="quote_sched_res_type",
             help="お得意様には「枠をキープしています」、新規の方には「先着順です」と適切なトーンで伝えます。"
         )
 
         include_delay_note = st.checkbox(
             "搬入遅延に関する注記を含める",
-            value=True,
-            help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。"
+            value=st.session_state.get("quote_inc_delay_note", True),
+            help="データ搬入が遅れた場合に納期が後ろ倒しになる可能性の注記です。",
+            key="quote_inc_delay_note"
         )
 
         # 納品仕様・作業内容・音声レベル設定
@@ -1473,7 +1771,11 @@ with tab1:
         """, unsafe_allow_html=True)
         with st.expander("🎚️ 納品仕様・作業内容・音声レベル設定（詳細）", expanded=True):
             st.markdown("##### 🛠️ 主な作業内容の選択")
-            include_work_contents = st.checkbox("メッセージに「主な作業内容」を含める", value=True, key="chk_inc_work_contents")
+            include_work_contents = st.checkbox(
+                "メッセージに「主な作業内容」を含める",
+                value=st.session_state.get("chk_inc_work_contents", True),
+                key="chk_inc_work_contents"
+            )
 
             c_task1 = True
             c_task2 = True
@@ -1484,51 +1786,67 @@ with tab1:
             if include_work_contents:
                 t_col1, t_col2 = st.columns(2)
                 with t_col1:
-                    c_task1 = st.checkbox("ノイズ除去", value=True, key="chk_task1", help="リップノイズ・部屋鳴り・環境音の低減")
-                    c_task2 = st.checkbox("音量・音圧調整", value=True, key="chk_task2", help="ラウドネス規準準拠のバランス調整")
+                    c_task1 = st.checkbox("ノイズ除去", value=st.session_state.get("chk_task1", True), key="chk_task1", help="リップノイズ・部屋鳴り・環境音の低減")
+                    c_task2 = st.checkbox("音量・音圧調整", value=st.session_state.get("chk_task2", True), key="chk_task2", help="ラウドネス規準準拠のバランス調整")
                 with t_col2:
-                    c_task3 = st.checkbox("BGM・効果音MA", value=True, key="chk_task3", help="BGM・効果音（SE）のMA処理・整音ミックス")
-                    c_task4 = st.checkbox("マスタリング・書出", value=True, key="chk_task4", help="マスタリングおよび指定フォーマットでの書き出し")
+                    c_task3 = st.checkbox("BGM・効果音MA", value=st.session_state.get("chk_task3", True), key="chk_task3", help="BGM・効果音（SE）のMA処理・整音ミックス")
+                    c_task4 = st.checkbox("マスタリング・書出", value=st.session_state.get("chk_task4", True), key="chk_task4", help="マスタリングおよび指定フォーマットでの書き出し")
 
-                c_custom_task = st.text_input("追加の作業内容（任意）", placeholder="例: テロップ合わせ、BGM選定 など", key="txt_custom_task")
+                c_custom_task = st.text_input(
+                    "追加の作業内容（任意）",
+                    value=st.session_state.get("txt_custom_task", ""),
+                    placeholder="例: テロップ合わせ、BGM選定 など",
+                    key="txt_custom_task"
+                )
 
             st.markdown("---")
             st.markdown("##### 🎚️ 音声仕様・修正規定")
+            audio_spec_opts = [
+                "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)",
+                "目標ラウドネス値 -14.0 LUFS (TP -1.0dBTP以下)",
+                "目標ラウドネス値 -16.0 LUFS (TP -1.0dBTP以下)",
+                "クライアント様指定基準に準拠",
+                "指定なし（最適なバランスに調整）"
+            ]
+            cur_spec = st.session_state.get("quote_audio_spec", audio_spec_opts[0])
+            spec_idx = audio_spec_opts.index(cur_spec) if cur_spec in audio_spec_opts else 0
             audio_spec = st.selectbox(
                 "音声レベル（ラウドネス規準）",
-                [
-                    "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)",
-                    "目標ラウドネス値 -14.0 LUFS (TP -1.0dBTP以下)",
-                    "目標ラウドネス値 -16.0 LUFS (TP -1.0dBTP以下)",
-                    "クライアント様指定基準に準拠",
-                    "指定なし（最適なバランスに調整）"
-                ],
-                index=0
+                audio_spec_opts,
+                index=spec_idx,
+                key="quote_audio_spec"
             )
 
             include_lufs14_note = False
             if "14.0 LUFS" in audio_spec:
                 include_lufs14_note = st.checkbox(
                     "音質維持に関する注記を含める（-14 LUFSが困難な場合の案内）",
-                    value=True,
-                    help="作品の構成や音割れ・ノイズ浮き防止のため、最適な聴きやすさ（-15〜-16 LUFS前後）を優先する旨の案内です。"
+                    value=st.session_state.get("quote_inc_lufs14", False),
+                    help="作品の構成や音割れ・ノイズ浮き防止のため、最適な聴きやすさ（-15〜-16 LUFS前後）を優先する旨の案内です。",
+                    key="quote_inc_lufs14"
                 )
 
             include_raw_audio_note = st.checkbox(
                 "素材状態に関する事前注記を含める（ノイズ過多時の再見積もり予防線）",
-                value=False,
-                help="一般的な収録状態を想定した見積もりであり、ノイズが極端に多い場合は再見積もり相談となる旨の事前注記です。"
+                value=st.session_state.get("quote_inc_raw_note", False),
+                help="一般的な収録状態を想定した見積もりであり、ノイズが極端に多い場合は再見積もり相談となる旨の事前注記です。",
+                key="quote_inc_raw_note"
             )
 
+            audio_fmt_opts = [
+                "WAV (48kHz / 24bit)",
+                "WAV (48kHz / 16bit)",
+                "WAV",
+                "WAV + MP3 (320kbps)",
+                "ご指定のフォーマット"
+            ]
+            cur_fmt = st.session_state.get("quote_audio_fmt", audio_fmt_opts[0])
+            fmt_idx = audio_fmt_opts.index(cur_fmt) if cur_fmt in audio_fmt_opts else 0
             audio_format = st.selectbox(
                 "納品フォーマット",
-                [
-                    "WAV (48kHz / 24bit)",
-                    "WAV (48kHz / 16bit)",
-                    "WAV",
-                    "WAV + MP3 (320kbps)",
-                    "ご指定のフォーマット"
-                ]
+                audio_fmt_opts,
+                index=fmt_idx,
+                key="quote_audio_fmt"
             )
 
             retake_policy_options = [
@@ -1539,14 +1857,18 @@ with tab1:
                 "記載しない",
                 "✏️ 直接入力"
             ]
+            cur_retake = st.session_state.get("quote_retake_choice", "記載しない")
+            retake_idx = retake_policy_options.index(cur_retake) if cur_retake in retake_policy_options else 4
             retake_policy_choice = st.selectbox(
                 "修正対応の規定",
                 retake_policy_options,
-                index=4
+                index=retake_idx,
+                key="quote_retake_choice"
             )
             if retake_policy_choice == "✏️ 直接入力":
                 custom_retake = st.text_input(
                     "修正対応の直接入力",
+                    value=st.session_state.get("custom_retake_policy", ""),
                     placeholder="例: 2回まで無料対応（編集直しによる素材差し替え等は別途）",
                     key="custom_retake_policy"
                 )
@@ -1556,8 +1878,9 @@ with tab1:
 
             include_rework_fee_note = st.checkbox(
                 "編集直し・素材差し替えに関する追加費用の注記を含める",
-                value=False,
-                help="クライアント都合の映像編集直しや素材差し替え、構成変更による再作業は別途費用相談となる旨の注記です。"
+                value=st.session_state.get("quote_inc_rework_note", False),
+                help="クライアント都合の映像編集直しや素材差し替え、構成変更による再作業は別途費用相談となる旨の注記です。",
+                key="quote_inc_rework_note"
             )
 
         with st.expander("ℹ️ 料金テーブルの確認（基準レート）"):
