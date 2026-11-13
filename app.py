@@ -2525,7 +2525,7 @@ with tab3:
             key="sig_eval"
         )
 
-    # --- 評価コメント生成ロジック ---
+    # --- 評価・納品コメント生成ロジック ---
     target_name = eval_client_name.strip() if eval_client_name.strip() else "〇〇様"
     target_project = f"「{eval_project_name.strip()}」の" if eval_project_name.strip() else ""
 
@@ -2535,14 +2535,97 @@ with tab3:
     appeal_formal = "\n\nなお、今後とも音声編集（MA）や整音作業等のご相談がございましたら、誠心誠意ご対応させていただきますので、何卒お気軽にお申し付けくださいませ。" if appeal_flag else ""
     appeal_review = " また音声編集でお困りの際はぜひお声がけください！" if appeal_flag else ""
 
-    # 1. シンプル
+    sig_eval_append = get_signature_text(eval_sig)
+
+    # 1. 評価コメント（レビュー短文集：ココナラ・ランサーズ等の相手評価欄用）
     if impression == "とてもスムーズ":
-        msg_simple = f"""{target_name}
+        review_patterns = [
+            (
+                "① 定番・迅速丁寧（最もおすすめ）",
+                f"迅速かつ丁寧にご対応いただき、終始安心してお取引を進めることができました。素晴らしいご縁に心より感謝申し上げます。{appeal_review}今後ともよろしくお願いいたします。"
+            ),
+            (
+                "② 最短・1行シンプル（サクッと完了）",
+                f"スムーズで気持ちの良いお取引をありがとうございました！また機会がございましたらよろしくお願いいたします。"
+            ),
+            (
+                "③ 的確なご指示・レスポンス称賛",
+                f"的確なご指示と素早いレスポンスをいただき、大変スムーズに進行できました。{appeal_review}またよろしくお願いいたします。"
+            ),
+            (
+                "④ リピート・継続案件向け",
+                f"今回も迅速・丁寧にご対応いただき誠にありがとうございました！今後ともどうぞよろしくお願いいたします。"
+            )
+        ]
+    elif impression == "普通":
+        review_patterns = [
+            (
+                "① 定番・丁寧感謝（バランス重視）",
+                f"終始丁寧にご対応いただき、無事にお取引を完了することができました。ご依頼いただき誠にありがとうございました。{appeal_review}"
+            ),
+            (
+                "② 最短・1行シンプル",
+                f"ご丁寧なお取引をありがとうございました。また機会がございましたらよろしくお願いいたします。"
+            ),
+            (
+                "③ スムーズ完了",
+                f"迅速にご確認いただき、滞りなく納品まで進めることができました。またのご縁を心よりお待ちしております。"
+            )
+        ]
+    else:  # 少し時間がかかった
+        review_patterns = [
+            (
+                "① 定番・丁寧完了（配慮・お礼）",
+                f"ご丁寧にご対応いただき、無事にお取引を完了することができました。最後までお付き合いいただきありがとうございました。{appeal_review}"
+            ),
+            (
+                "② 最短・1行シンプル",
+                f"無事にお取引を完了でき安心いたしました。ご依頼いただき誠にありがとうございました。"
+            ),
+            (
+                "③ ご調整感謝",
+                f"追加のご確認やお打ち合わせにご協力いただき感謝申し上げます。また機会がございましたらよろしくお願いいたします。"
+            )
+        ]
+
+    # 2. 納品メッセージ（超シンプル・短文チャット集）
+    if impression == "とてもスムーズ":
+        q_thanks = "迅速にご対応いただき大変助かりました！"
+    elif impression == "普通":
+        q_thanks = "ご丁寧にご対応いただきありがとうございました。"
+    else:
+        q_thanks = "ご調整いただき誠にありがとうございました。"
+
+    q_msg1 = f"""{target_name}
+お世話になっております。{target_project}音声編集（MA）の納品データをお送りいたします。
+ご確認のほどよろしくお願いいたします。{appeal_short}""" + sig_eval_append
+
+    q_msg2 = f"""{target_name}
 お世話になっております！
-{target_project}音声編集（MA）の作業が完了いたしましたので、納品データをお送りいたします。
+{target_project}作業が完了いたしましたので、納品データをお送りいたします。
 
-迅速にご対応いただき大変助かりました！ご確認のほどよろしくお願いいたします。{appeal_short}"""
+{q_thanks}ご確認よろしくお願いいたします。{appeal_short}""" + sig_eval_append
 
+    q_msg3 = f"""{target_name}
+お世話になっております。{target_project}音声編集データを納品いたします。
+
+仕上がりに気になる点や微調整のご希望などがございましたら、お気軽にお申し付けください。{appeal_short}""" + sig_eval_append
+
+    q_msg4 = f"""{target_name}
+お世話になっております。{target_project}納品データをご用意いたしました。
+添付ファイル（または送付URL）よりダウンロードの上、ご確認いただけますと幸いです。
+
+問題ございませんでしたら、検収・正式納品のお手続きへお進みください。{appeal_short}""" + sig_eval_append
+
+    quick_delivery_patterns = [
+        ("① 最短・直球（要点のみ・2行）", q_msg1),
+        ("② 迅速感謝＋確認依頼（親しみやすさ）", q_msg2),
+        ("③ 微調整受付付き（安心感）", q_msg3),
+        ("④ ファイル受渡・検収案内（手続きスムーズ）", q_msg4)
+    ]
+
+    # 3. 納品メッセージ（標準版 & フォーマル版）
+    if impression == "とてもスムーズ":
         msg_standard = f"""{target_name}
 
 いつも大変お世話になっております。
@@ -2552,7 +2635,7 @@ with tab3:
 
 納品データについて気になる点や微調整などがございましたら、いつでもお気軽にご連絡ください。{appeal_standard}
 
-今後ともどうぞよろしくお願いいたします。"""
+今後ともどうぞよろしくお願いいたします。""" + sig_eval_append
 
         msg_formal = f"""{target_name}
 
@@ -2563,17 +2646,9 @@ with tab3:
 納品データを添付いたしましたので、ご査収のほどよろしくお願い申し上げます。
 修正や追加のご要望がございましたら、迅速に対応いたしますので何なりとお申し付けください。{appeal_formal}
 
-今後とも何卒よろしくお願い申し上げます。"""
-
-        msg_review = f"迅速かつ丁寧なご対応をいただき、終始安心してスムーズにお取引を進めることができました。素晴らしいご縁に心より感謝申し上げます。{appeal_review}今後ともよろしくお願いいたします。"
+今後とも何卒よろしくお願い申し上げます。""" + sig_eval_append
 
     elif impression == "普通":
-        msg_simple = f"""{target_name}
-お世話になっております。
-{target_project}音声編集（MA）の作業が完了いたしましたので、納品データをお送りいたします。
-
-ご確認のほどよろしくお願いいたします。何か気になる点がございましたらお知らせください。{appeal_short}"""
-
         msg_standard = f"""{target_name}
 
 いつも大変お世話になっております。
@@ -2584,7 +2659,7 @@ with tab3:
 
 納品データのご確認で何かございましたら、お申し付けください。{appeal_standard}
 
-また機会がございましたら、どうぞよろしくお願い申し上げます。"""
+また機会がございましたら、どうぞよろしくお願い申し上げます。""" + sig_eval_append
 
         msg_formal = f"""{target_name}
 
@@ -2594,17 +2669,9 @@ with tab3:
 ご丁寧なご連携をいただき、無事に納品工程を完了することができました。
 仕上がりデータをご確認いただき、不都合な点などがございましたらご連絡いただけますと幸いです。{appeal_formal}
 
-今後ともご愛顧のほど、よろしくお願い申し上げます。"""
-
-        msg_review = f"終始丁寧にご対応いただき、無事にお取引を完了することができました。ご依頼いただき誠にありがとうございました。{appeal_review}"
+今後ともご愛顧のほど、よろしくお願い申し上げます。""" + sig_eval_append
 
     else:  # 少し時間がかかった
-        msg_simple = f"""{target_name}
-お世話になっております。
-{target_project}音声編集（MA）の納品データをお送りいたします。
-
-ご調整いただきありがとうございました。ご確認のほどよろしくお願いいたします。{appeal_short}"""
-
         msg_standard = f"""{target_name}
 
 いつもお世話になっております。
@@ -2614,7 +2681,7 @@ with tab3:
 
 今回の音声データがお役に立ちましたら幸いでございます。{appeal_standard}
 
-またの機会がございましたら、よろしくお願い申し上げます。"""
+またの機会がございましたら、よろしくお願い申し上げます。""" + sig_eval_append
 
         msg_formal = f"""{target_name}
 
@@ -2626,14 +2693,7 @@ with tab3:
 添付データのご確認をよろしくお願い申し上げます。{appeal_formal}
 
 またの機会がございましたら、何卒よろしくお願い申し上げます。
-敬具"""
-
-        msg_review = f"ご丁寧にご対応いただき、無事にお取引を完了することができました。最後までお付き合いいただきありがとうございました。{appeal_review}"
-
-    sig_eval_append = get_signature_text(eval_sig)
-    msg_simple += sig_eval_append
-    msg_standard += sig_eval_append
-    msg_formal += sig_eval_append
+敬具""" + sig_eval_append
 
     # --- 右カラム: 生成結果 ---
     with col_eval_result:
@@ -2643,37 +2703,41 @@ with tab3:
             <span>納品・評価コメントのコピー</span>
         </div>
         <div class="copy-tip">
-            💡 各タブ右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
+            💡 各カード右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
         </div>
         """, unsafe_allow_html=True)
 
         subtab1, subtab2, subtab3, subtab4 = st.tabs([
-            "⚡ シンプル（短文チャット）",
-            "📝 標準（丁寧・親しみ）",
-            "👔 フォーマル（しっかり）",
-            "⭐ 評価欄用（レビュー短文）"
+            "⭐ 評価コメント（レビュー短文集）",
+            "⚡ 納品メッセージ（超シンプル集）",
+            "📝 納品メッセージ（標準・丁寧）",
+            "👔 納品メッセージ（フォーマル）"
         ])
 
         with subtab1:
-            st.markdown("##### ⚡ シンプル版（要点のみ・短文）")
-            st.code(msg_simple, language="markdown")
-            with st.expander("✏️ テキストを直接編集したい場合"):
-                st.text_area("編集用", value=msg_simple, height=160, key="edit_ev_simple")
+            st.markdown("##### ⭐ プラットフォーム評価欄用（レビュー短文・厳選パターン）")
+            st.caption("💡 ココナラ・ランサーズ等の取引完了時の評価入力欄に最適です。右上の 📋 からワンクリックでコピーできます。")
+            for title, rev_text in review_patterns:
+                with st.container(border=True):
+                    st.markdown(f"**{title}**")
+                    st.code(rev_text, language="text")
 
         with subtab2:
+            st.markdown("##### ⚡ 納品メッセージ（超シンプル・短文チャット集）")
+            st.caption("💡 チャットや要点のみの送付に最適です。右上の 📋 からワンクリックでコピーできます。")
+            for title, q_text in quick_delivery_patterns:
+                with st.container(border=True):
+                    st.markdown(f"**{title}**")
+                    st.code(q_text, language="markdown")
+
+        with subtab3:
             st.markdown("##### 📝 標準版（バランス・親しみやすい丁寧さ）")
             st.code(msg_standard, language="markdown")
             with st.expander("✏️ テキストを直接編集したい場合"):
                 st.text_area("編集用", value=msg_standard, height=250, key="edit_ev_std")
 
-        with subtab3:
+        with subtab4:
             st.markdown("##### 👔 フォーマル版（ビジネス・企業向け）")
             st.code(msg_formal, language="markdown")
             with st.expander("✏️ テキストを直接編集したい場合"):
                 st.text_area("編集用", value=msg_formal, height=280, key="edit_ev_formal")
-
-        with subtab4:
-            st.markdown("##### ⭐ プラットフォーム評価欄用（レビュー短文）")
-            st.code(msg_review, language="markdown")
-            with st.expander("✏️ テキストを直接編集したい場合"):
-                st.text_area("編集用", value=msg_review, height=120, key="edit_ev_review")
