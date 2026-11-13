@@ -906,7 +906,7 @@ def render_schedule_inputs(
         with col_h1:
             han_date = st.date_input("データご搬入日", value=today + datetime.timedelta(days=default_han_days), key=f"h_date_{item_key}")
         with col_h2:
-            han_time = st.text_input("搬入時間・メモ", value="21:30ごろ", placeholder="例: 21:30ごろ、夕方、ナレ11/3など", key=f"h_time_{item_key}")
+            han_time = st.text_input("搬入時間・メモ", value="21:30ごろ", key=f"h_time_{item_key}")
         han_text = f"{format_date_jp(han_date)} {han_time}".strip()
 
     # 3. 作業予定日（何日でも追加可能）
@@ -1268,7 +1268,6 @@ with st.sidebar:
     st.text_area(
         "案件メモ・備忘録（任意）",
         value=st.session_state.get("proj_memo", ""),
-        placeholder="例: BGM素材受領済み。フォーマット48kHz/24bit。修正2回まで無料。",
         height=90,
         key="proj_memo"
     )
@@ -1299,7 +1298,6 @@ with st.sidebar:
         input_sync_dir = st.text_input(
             "同期フォルダパス",
             value=cur_sync_dir,
-            placeholder=r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント",
             help="Google Drive for Desktop のマイドライブ内フォルダなどを指定できます（Macの場合はMac上のパスを指定）",
             key="input_sync_dir"
         )
@@ -1468,7 +1466,6 @@ with tab1:
             client_name = st.text_input(
                 "クライアント名（任意）",
                 value=st.session_state.get("t1_client_name", ""),
-                placeholder="例: 株式会社〇〇 / 田中（敬称は自動付与）",
                 key="t1_client_name",
                 on_change=sync_client_name,
                 args=("t1_client_name",)
@@ -1488,7 +1485,6 @@ with tab1:
         project_title = st.text_input(
             "案件名・案件全体の概要（任意）",
             value=st.session_state.get("t1_project_name", ""),
-            placeholder="例: レギュラー番組 ＋ 番宣CM制作 MA作業",
             key="t1_project_name",
             on_change=sync_project_name,
             args=("t1_project_name",)
@@ -1796,7 +1792,7 @@ with tab1:
             st.caption("よく受ける番組やレギュラー案件を登録しておくと、「固定単価・レギュラー番組」でいつでも選べるようになります。")
             col_add_name, col_add_price, col_add_btn = st.columns([3, 2, 2])
             with col_add_name:
-                new_prog_name = st.text_input("新しい番組名", placeholder="例: 〇〇チャンネル", key="new_p_name")
+                new_prog_name = st.text_input("新しい番組名", key="new_p_name")
             with col_add_price:
                 new_prog_price = st.number_input("単価（円/本）", min_value=500, max_value=100000, value=3000, step=500, key="new_p_price")
             with col_add_btn:
@@ -1838,7 +1834,6 @@ with tab1:
                 st.text_input(
                     "調整項目名・理由",
                     value=st.session_state.get("quote_overall_adj_note", "端数調整・お値引き"),
-                    placeholder="例: 端数調整、まとめ割、リピート割引 など",
                     key="quote_overall_adj_note"
                 )
             with col_adj2:
@@ -1972,20 +1967,17 @@ with tab1:
             with st.container(border=True):
                 sched_delivery_text = st.text_input(
                     "ご希望納期",
-                    value=st.session_state.get("free_delivery_input", "1本目：11/3（火）中、2本目：11/10（火）まで"),
-                    placeholder="例: 1本目：11/3（火）中、2本目：11/10（火）まで",
+                    value=st.session_state.get("free_delivery_input", ""),
                     key="free_delivery_input"
                 )
                 sched_handover_text = st.text_input(
                     "データご搬入",
-                    value=st.session_state.get("free_handover_input", "本編：未定、ナレ：11/2（月）21:30ごろ"),
-                    placeholder="例: 素材受領済み、または 本編：未定、ナレ：11/2（月）21:30ごろ",
+                    value=st.session_state.get("free_handover_input", ""),
                     key="free_handover_input"
                 )
                 sched_work_text = st.text_input(
                     "作業予定日",
-                    value=st.session_state.get("free_work_input", "11/2（月）夜、11/4 夕方以降"),
-                    placeholder="例: 11/2（月）夜、11/4 夕方以降",
+                    value=st.session_state.get("free_work_input", ""),
                     key="free_work_input"
                 )
 
@@ -2055,7 +2047,6 @@ with tab1:
                 c_custom_task = st.text_input(
                     "追加の作業内容（任意）",
                     value=st.session_state.get("txt_custom_task", ""),
-                    placeholder="例: テロップ合わせ、BGM選定 など",
                     key="txt_custom_task"
                 )
 
@@ -2129,7 +2120,6 @@ with tab1:
                 custom_retake = st.text_input(
                     "修正対応の直接入力",
                     value=st.session_state.get("custom_retake_policy", ""),
-                    placeholder="例: 2回まで無料対応（編集直しによる素材差し替え等は別途）",
                     key="custom_retake_policy"
                 )
                 retake_policy = custom_retake.strip() if custom_retake.strip() else "記載しない"
@@ -2486,7 +2476,6 @@ with tab2:
             comm_client_name = st.text_input(
                 "宛名 / クライアント名（任意）",
                 value=st.session_state.get("t2_client_name", ""),
-                placeholder="例: 株式会社〇〇 / 田中（敬称は自動付与）",
                 key="t2_client_name",
                 on_change=sync_client_name,
                 args=("t2_client_name",)
@@ -2509,7 +2498,6 @@ with tab2:
             comm_project_name = st.text_input(
                 "案件名（任意）",
                 value=st.session_state.get("t2_project_name", ""),
-                placeholder="例: YouTube対談動画",
                 key="t2_project_name",
                 on_change=sync_project_name,
                 args=("t2_project_name",)
@@ -2531,7 +2519,6 @@ with tab2:
             if comm_file_type == "✏️ 直接指定":
                 comm_file_custom = st.text_input(
                     "ファイル種別の直接入力",
-                    placeholder="例: 2mix（WAV・MP3）データ",
                     key="comm_file_custom"
                 )
                 file_label = comm_file_custom.strip() if comm_file_custom.strip() else "ファイル"
@@ -2553,20 +2540,17 @@ with tab2:
 
         comm_url = st.text_area(
             "🔗 ファイルダウンロードURL（ギガファイル便、Google Drive等）",
-            placeholder="例:\nhttps://63.gigafile.nu/1102-efb8d3101822180e3e19859a21594d79",
             height=90,
             key="comm_url"
         )
 
         comm_url_meta = st.text_input(
             "⏳ 保持期限・DLキー等（任意）",
-            placeholder="例: ダウンロード期限: 7日間 / DLキー: 1234",
             key="comm_url_meta"
         )
 
         comm_free_text = st.text_area(
             "📝 自由コメント・特記事項・連絡事項（任意）",
-            placeholder="例:\nボーカルの音量を少し持ち上げております。BGMとのバランスをご確認ください。\n気になる点がございましたら何でもお知らせください。",
             height=120,
             key="comm_free_text"
         )
@@ -2795,7 +2779,6 @@ with tab3:
             eval_client_name = st.text_input(
                 "クライアント名（任意）",
                 value=st.session_state.get("t3_client_name", ""),
-                placeholder="例: 株式会社〇〇 / 田中（敬称は自動付与）",
                 key="t3_client_name",
                 on_change=sync_client_name,
                 args=("t3_client_name",)
@@ -2816,7 +2799,6 @@ with tab3:
         eval_project_name = st.text_input(
             "案件名（任意）",
             value=st.session_state.get("t3_project_name", ""),
-            placeholder="例: YouTube対談動画 MA作業",
             key="t3_project_name",
             on_change=sync_project_name,
             args=("t3_project_name",)
