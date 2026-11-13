@@ -224,6 +224,8 @@ if "active_project_id" not in st.session_state:
 
 if "proj_client_name" not in st.session_state:
     st.session_state.proj_client_name = ""
+if "proj_orig_client_name" not in st.session_state:
+    st.session_state.proj_orig_client_name = ""
 if "proj_client_honorific" not in st.session_state:
     st.session_state.proj_client_honorific = "様"
 if "proj_project_name" not in st.session_state:
@@ -307,6 +309,7 @@ def load_project_into_session(project: dict):
 
     st.session_state.active_project_id = project["id"]
     st.session_state.proj_client_name = project.get("client_name", "")
+    st.session_state.proj_orig_client_name = project.get("client_name", "").strip()
     st.session_state.proj_client_honorific = project.get("client_honorific", "様")
     st.session_state.proj_project_name = project.get("project_name", "")
     st.session_state.proj_status = project.get("status", "📝 お見積り中")
@@ -453,6 +456,7 @@ def reset_to_new_project():
 
     st.session_state.active_project_id = "new"
     st.session_state.proj_client_name = ""
+    st.session_state.proj_orig_client_name = ""
     st.session_state.proj_client_honorific = "様"
     st.session_state.proj_project_name = ""
     st.session_state.proj_status = "📝 お見積り中"
@@ -510,7 +514,7 @@ def reset_to_new_project():
     st.session_state.eval_appeal_flag = True
     st.session_state.sig_eval = "なし"
 
-def save_current_project_data():
+def save_current_project_data(force_as_new: bool = False, target_id: str = None) -> str:
     projects = load_projects()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -623,8 +627,8 @@ def save_current_project_data():
     }
 
     client_honorific = st.session_state.get("proj_client_honorific", "様")
-    current_id = st.session_state.get("active_project_id", "new")
-    if current_id == "new":
+    current_id = target_id or st.session_state.get("active_project_id", "new")
+    if force_as_new or current_id == "new":
         new_id = f"proj_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
         project_record = {
             "id": new_id,
@@ -643,6 +647,7 @@ def save_current_project_data():
         }
         projects.insert(0, project_record)
         st.session_state.active_project_id = new_id
+        st.session_state.proj_orig_client_name = client
     else:
         found = False
         for p in projects:
@@ -665,6 +670,7 @@ def save_current_project_data():
                 "id": current_id,
                 "name": display_name,
                 "client_name": client,
+                "client_honorific": client_honorific,
                 "project_name": proj_title,
                 "status": status,
                 "memo": memo,
@@ -676,6 +682,7 @@ def save_current_project_data():
                 "eval_data": eval_data
             }
             projects.insert(0, project_record)
+        st.session_state.proj_orig_client_name = client
 
     save_projects(projects)
 
@@ -687,6 +694,59 @@ def save_current_project_data():
             sync_backup_to_dir(sync_dir)
 
     return display_name
+
+@st.dialog("💾 案件の保存確認")
+def show_save_confirm_dialog(project_id: str):
+    projects = load_projects()
+    matched = [p for p in projects if p["id"] == project_id]
+    orig_name = matched[0].get("name", "既存案件") if matched else "既存案件"
+    curr_client = st.session_state.get("proj_client_name", "").strip()
+    curr_proj = st.session_state.get("proj_project_name", "").strip()
+    curr_display = f"{curr_client} - {curr_proj}" if (curr_client and curr_proj) else (curr_client or curr_proj or orig_name)
+
+    st.markdown(f"""
+    <div style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 12px 16px; margin-bottom: 1rem;">
+        <div style="font-size: 0.8rem; font-weight: 700; color: #64748B;">📁 保存対象の案件:</div>
+        <div style="font-size: 1.05rem; font-weight: 700; color: #1E3A8A; margin-top: 2px;">{curr_display}</div>
+        <div style="font-size: 0.78rem; color: #94A3B8; margin-top: 2px;">（元の登録名: {orig_name}）</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("既存の案件データを**上書き更新**しますか？  \nそれとも別案件として**別名保存（新規追加）**しますか？")
+    st.write("")
+
+    col_dlg1, col_dlg2 = st.columns(2)
+    with col_dlg1:
+        if st.button("💾 上書き保存する", type="primary", use_container_width=True, key="dlg_btn_overwrite"):
+            saved_title = save_current_project_data(force_as_new=False, target_id=project_id)
+            st.toast(f"✅ 案件「{saved_title}」を上書き保存しました！", icon="💾")
+            st.rerun()
+    with col_dlg2:
+        if st.button("✨ 別名で新規保存", use_container_width=True, key="dlg_btn_save_as_new"):
+            saved_title = save_current_project_data(force_as_new=True)
+            st.toast(f"✨ 別名（新規案件）として「{saved_title}」を保存しました！", icon="✨")
+            st.rerun()
+
+def handle_save_project():
+    current_id = st.session_state.get("active_project_id", "new")
+    current_client = st.session_state.get("proj_client_name", "").strip()
+    orig_client = st.session_state.get("proj_orig_client_name", "").strip()
+
+    # 1. 新規案件（まだID未発行）
+    if current_id == "new":
+        saved_title = save_current_project_data(force_as_new=True)
+        st.toast(f"✅ 案件「{saved_title}」を新規保存しました！", icon="💾")
+        st.rerun()
+
+    # 2. 既存案件で、クライアント名が別のものが入った場合 -> 自動で別名保存！
+    elif orig_client != current_client and current_client:
+        saved_title = save_current_project_data(force_as_new=True)
+        st.toast(f"📋 クライアント名が「{orig_client or '未設定'}」から「{current_client}」に変更されたため、別名（新規案件）として保存しました！", icon="✨")
+        st.rerun()
+
+    # 3. それ以外（既存案件でクライアント名が同じ、または未入力のままなど） -> 上書き確認ダイアログ
+    else:
+        show_save_confirm_dialog(current_id)
 
 def delete_active_project():
     current_id = st.session_state.get("active_project_id", "new")
@@ -1144,9 +1204,7 @@ with st.sidebar:
     col_sb1, col_sb2 = st.columns([1, 1])
     with col_sb1:
         if st.button("💾 案件を保存", type="primary", use_container_width=True, key="btn_save_proj"):
-            saved_title = save_current_project_data()
-            st.toast(f"✅ 案件「{saved_title}」を保存しました！", icon="💾")
-            st.rerun()
+            handle_save_project()
 
     with col_sb2:
         if current_active_id != "new":
@@ -1301,9 +1359,7 @@ with col_bar1:
     st.markdown(bar_html, unsafe_allow_html=True)
 with col_bar2:
     if st.button("💾 案件を保存", key="btn_quick_save", type="primary", use_container_width=True):
-        saved_title = save_current_project_data()
-        st.toast(f"✅ 案件「{saved_title}」を保存しました！", icon="💾")
-        st.rerun()
+        handle_save_project()
 
 # 3つのタブを作成
 tab1, tab2, tab3 = st.tabs([
