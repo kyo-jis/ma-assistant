@@ -1273,7 +1273,7 @@ with tab1:
         client_name = st.text_input(
             "クライアント名（任意）",
             value=st.session_state.get("t1_client_name", ""),
-            placeholder="例: 〇〇 様",
+            placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
             key="t1_client_name",
             on_change=sync_client_name,
             args=("t1_client_name",)
@@ -1946,7 +1946,9 @@ with tab1:
         )
         st.markdown(metric_card_html, unsafe_allow_html=True)
 
-        client_display = client_name.strip() if client_name.strip() else "〇〇様"
+        client_raw = client_name.strip()
+        client_header = f"{client_raw}\n\n" if client_raw else ""
+        client_header_short = f"{client_raw}\n" if client_raw else ""
         project_display = f"「{project_title.strip()}」" if project_title.strip() else ""
 
         # スケジュールブロック作成
@@ -2108,9 +2110,7 @@ with tab1:
         sig_append_t1 = get_signature_text(selected_sig_t1)
 
         # パターン1: ココナラ・クラウドソーシング特化型
-        quote_msg_coconala = f"""{client_display}
-
-いつも大変お世話になっております。
+        quote_msg_coconala = f"""{client_header}いつも大変お世話になっております。
 ご相談いただきました{project_display}音声編集（MA）のお見積もり・スケジュール案をお送りいたします。
 
 ■ お見積り金額
@@ -2130,8 +2130,7 @@ with tab1:
         else:
             simple_sched_note = ""
 
-        quote_msg_simple = f"""{client_display}
-お世話になっております！
+        quote_msg_simple = f"""{client_header_short}お世話になっております！
 ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
 
 【お見積り】
@@ -2141,9 +2140,7 @@ with tab1:
 仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！""" + sig_append_t1
 
         # パターン3: ビジネスメール・詳細版
-        quote_msg_detailed = f"""{client_display}
-
-いつも大変お世話になっております。
+        quote_msg_detailed = f"""{client_header}いつも大変お世話になっております。
 ご相談いただきました{project_display}音声編集（MA）につきまして、お見積もりと制作進行案をご案内申し上げます。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2482,7 +2479,7 @@ with tab3:
         eval_client_name = st.text_input(
             "クライアント名（任意）",
             value=st.session_state.get("t3_client_name", ""),
-            placeholder="例: 株式会社〇〇 様",
+            placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
             key="t3_client_name",
             on_change=sync_client_name,
             args=("t3_client_name",)
@@ -2526,7 +2523,9 @@ with tab3:
         )
 
     # --- 評価・納品コメント生成ロジック ---
-    target_name = eval_client_name.strip() if eval_client_name.strip() else "〇〇様"
+    c_eval_name = eval_client_name.strip()
+    eval_hdr = f"{c_eval_name}\n\n" if c_eval_name else ""
+    eval_hdr_short = f"{c_eval_name}\n" if c_eval_name else ""
     target_project = f"「{eval_project_name.strip()}」の" if eval_project_name.strip() else ""
 
     # アピール文（トーン別）
@@ -2596,23 +2595,19 @@ with tab3:
     else:
         q_thanks = "ご調整いただき誠にありがとうございました。"
 
-    q_msg1 = f"""{target_name}
-お世話になっております。{target_project}音声編集（MA）の納品データをお送りいたします。
+    q_msg1 = f"""{eval_hdr_short}お世話になっております。{target_project}音声編集（MA）の納品データをお送りいたします。
 ご確認のほどよろしくお願いいたします。{appeal_short}""" + sig_eval_append
 
-    q_msg2 = f"""{target_name}
-お世話になっております！
+    q_msg2 = f"""{eval_hdr_short}お世話になっております！
 {target_project}作業が完了いたしましたので、納品データをお送りいたします。
 
 {q_thanks}ご確認よろしくお願いいたします。{appeal_short}""" + sig_eval_append
 
-    q_msg3 = f"""{target_name}
-お世話になっております。{target_project}音声編集データを納品いたします。
+    q_msg3 = f"""{eval_hdr_short}お世話になっております。{target_project}音声編集データを納品いたします。
 
 仕上がりに気になる点や微調整のご希望などがございましたら、お気軽にお申し付けください。{appeal_short}""" + sig_eval_append
 
-    q_msg4 = f"""{target_name}
-お世話になっております。{target_project}納品データをご用意いたしました。
+    q_msg4 = f"""{eval_hdr_short}お世話になっております。{target_project}納品データをご用意いたしました。
 添付ファイル（または送付URL）よりダウンロードの上、ご確認いただけますと幸いです。
 
 問題ございませんでしたら、検収・正式納品のお手続きへお進みください。{appeal_short}""" + sig_eval_append
@@ -2626,9 +2621,7 @@ with tab3:
 
     # 3. 納品メッセージ（標準版 & フォーマル版）
     if impression == "とてもスムーズ":
-        msg_standard = f"""{target_name}
-
-いつも大変お世話になっております。
+        msg_standard = f"""{eval_hdr}いつも大変お世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました！
 
 ご指示や素材のご手配が非常に的確で、メッセージのレスポンスも迅速にしていただいたおかげで、終始大変スムーズに作業を進行することができました。心より感謝申し上げます。
@@ -2637,9 +2630,7 @@ with tab3:
 
 今後ともどうぞよろしくお願いいたします。""" + sig_eval_append
 
-        msg_formal = f"""{target_name}
-
-いつも大変お世話になっております。
+        msg_formal = f"""{eval_hdr}いつも大変お世話になっております。
 この度は、{target_project}音声編集（MA）業務のご依頼を賜り、誠にありがとうございました。
 
 ご指示や素材のご手配を迅速にいただき、円滑に作業を進行することができましたこと、深く感謝申し上げます。
@@ -2649,9 +2640,7 @@ with tab3:
 今後とも何卒よろしくお願い申し上げます。""" + sig_eval_append
 
     elif impression == "普通":
-        msg_standard = f"""{target_name}
-
-いつも大変お世話になっております。
+        msg_standard = f"""{eval_hdr}いつも大変お世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
 ご丁寧にご対応いただき、無事に納品完了まで進めることができました。
@@ -2661,9 +2650,7 @@ with tab3:
 
 また機会がございましたら、どうぞよろしくお願い申し上げます。""" + sig_eval_append
 
-        msg_formal = f"""{target_name}
-
-いつも大変お世話になっております。
+        msg_formal = f"""{eval_hdr}いつも大変お世話になっております。
 この度は、{target_project}音声編集（MA）業務のご依頼を賜り、心より御礼申し上げます。
 
 ご丁寧なご連携をいただき、無事に納品工程を完了することができました。
@@ -2672,9 +2659,7 @@ with tab3:
 今後ともご愛顧のほど、よろしくお願い申し上げます。""" + sig_eval_append
 
     else:  # 少し時間がかかった
-        msg_standard = f"""{target_name}
-
-いつもお世話になっております。
+        msg_standard = f"""{eval_hdr}いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
 追加のご調整やご確認などを経て、無事に納品完了まで進めることができ安心いたしました。最後まで丁寧にお付き合いいただき、誠にありがとうございました。
@@ -2683,9 +2668,7 @@ with tab3:
 
 またの機会がございましたら、よろしくお願い申し上げます。""" + sig_eval_append
 
-        msg_formal = f"""{target_name}
-
-拝啓
+        msg_formal = f"""{eval_hdr}拝啓
 貴社におかれましては、ますますご清栄のこととお慶び申し上げます。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
