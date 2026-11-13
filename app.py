@@ -269,7 +269,8 @@ def clear_quote_widget_keys():
             "chk_inc_work_contents", "chk_task1", "chk_task2", "chk_task3", "chk_task4", "txt_custom_task",
             "quote_audio_spec", "quote_inc_lufs14", "quote_inc_raw_note", "quote_audio_fmt",
             "quote_retake_choice", "custom_retake_policy", "quote_inc_rework_note",
-            "sig_choice_t1", "sig_comm", "sig_eval"
+            "sig_choice_t1", "sig_comm", "sig_eval",
+            "override_flag_", "override_val_", "quote_overall_adj"
         ])
     ]
     for k in keys_to_delete:
@@ -324,6 +325,10 @@ def load_project_into_session(project: dict):
                 st.session_state[f"fc_{iid}"] = int(it["fixed_count"])
             if "work_hours" in it:
                 st.session_state[f"wh_{iid}"] = float(it["work_hours"])
+            if "manual_price_enabled" in it:
+                st.session_state[f"override_flag_{iid}"] = bool(it["manual_price_enabled"])
+            if "manual_price" in it:
+                st.session_state[f"override_val_{iid}"] = int(it["manual_price"])
 
     # 2. 見積もり詳細設定（税・スケジュール・仕様・修正規定・署名等）の復元
     qs = project.get("quote_settings", {})
@@ -388,6 +393,10 @@ def load_project_into_session(project: dict):
 
         if "sig_choice_t1" in qs:
             st.session_state.sig_choice_t1 = qs["sig_choice_t1"]
+        if "overall_adj_price" in qs:
+            st.session_state.quote_overall_adj = int(qs["overall_adj_price"])
+        if "overall_adj_note" in qs:
+            st.session_state.quote_overall_adj_note = qs["overall_adj_note"]
 
     # 3. 連絡タブの復元
     comm_data = project.get("comm_data", {})
@@ -446,6 +455,8 @@ def reset_to_new_project():
     st.session_state.custom_retake_policy = ""
     st.session_state.quote_inc_rework_note = False
     st.session_state.sig_choice_t1 = "ココナラ・ランサーズ用"
+    st.session_state.quote_overall_adj = 0
+    st.session_state.quote_overall_adj_note = "端数調整・お値引き"
 
     # 連絡タブのデフォルト
     st.session_state.comm_file_type = "ミックスファイル"
@@ -490,6 +501,10 @@ def save_current_project_data():
             item_copy["fixed_count"] = st.session_state.get(f"fc_{iid}", 1)
         elif genre == "その他（作業時間計算）":
             item_copy["work_hours"] = st.session_state.get(f"wh_{iid}", 2.0)
+        is_ov = st.session_state.get(f"override_flag_{iid}", it.get("manual_price_enabled", False))
+        item_copy["manual_price_enabled"] = is_ov
+        if is_ov:
+            item_copy["manual_price"] = int(st.session_state.get(f"override_val_{iid}", it.get("manual_price", 0)))
         updated_items.append(item_copy)
 
     st.session_state.quote_items = updated_items
@@ -548,7 +563,9 @@ def save_current_project_data():
         "retake_policy_choice": st.session_state.get("quote_retake_choice", "記載しない"),
         "custom_retake": st.session_state.get("custom_retake_policy", ""),
         "include_rework_fee_note": st.session_state.get("quote_inc_rework_note", False),
-        "sig_choice_t1": st.session_state.get("sig_choice_t1", "ココナラ・ランサーズ用")
+        "sig_choice_t1": st.session_state.get("sig_choice_t1", "ココナラ・ランサーズ用"),
+        "overall_adj_price": int(st.session_state.get("quote_overall_adj", 0)),
+        "overall_adj_note": st.session_state.get("quote_overall_adj_note", "端数調整・お値引き")
     }
 
     comm_data = {
@@ -1533,9 +1550,42 @@ with tab1:
                     item_price_base = int(round(w_hours * 3000))
                     item_detail_text = f"作業時間計算 {w_hours:.1f}時間（3,000円/h）"
                     item_breakdown_text = f"3,000円 × {w_hours:.1f}h = {item_price_base:,}円"
-                    item_price_base = int(round(w_hours * 3000))
-                    item_detail_text = f"作業時間計算 {w_hours:.1f}時間（3,000円/h）"
-                    item_breakdown_text = f"3,000円 × {w_hours:.1f}h = {item_price_base:,}円"
+
+                # --- 料金の手直し（手動上書き・直接指定） ---
+                st.markdown('<div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #CBD5E1;"></div>', unsafe_allow_html=True)
+                col_ov1, col_ov2 = st.columns([3, 2])
+                with col_ov1:
+                    flag_key = f"override_flag_{item_id}"
+                    is_override = st.checkbox(
+                        "✏️ この依頼内容の料金を手直しする",
+                        value=st.session_state.get(flag_key, item.get("manual_price_enabled", False)),
+                        key=flag_key,
+                        help="時間単位の計算に当てはまらない場合や、ご予算・端数調整など、自由な金額を直接指定できます。"
+                    )
+                    item["manual_price_enabled"] = is_override
+
+                with col_ov2:
+                    if is_override:
+                        val_key = f"override_val_{item_id}"
+                        if val_key not in st.session_state:
+                            st.session_state[val_key] = int(item.get("manual_price", item_price_base))
+
+                        custom_price = st.number_input(
+                            "手直し後の金額（円）",
+                            min_value=0,
+                            max_value=10000000,
+                            value=int(st.session_state[val_key]),
+                            step=500,
+                            key=val_key
+                        )
+                        item["manual_price"] = custom_price
+                        diff = custom_price - item_price_base
+                        diff_text = f"（{diff:+,}円 手直し）" if diff != 0 else "（手直し指定）"
+                        item_detail_text = f"{item_display_genre} {diff_text}"
+                        item_breakdown_text = f"手直し指定金額 = {custom_price:,}円"
+                        item_price_base = custom_price
+                    else:
+                        st.markdown(f'<div style="text-align: right; font-size: 0.88rem; color: #475569; padding-top: 0.2rem;">小計（自動計算）: <b style="font-size: 1.05rem; color: #1E3A8A;">{item_price_base:,}</b> 円</div>', unsafe_allow_html=True)
 
                 items_calculation_results.append({
                     "id": item_id,
@@ -1589,6 +1639,26 @@ with tab1:
                             save_custom_programs(custom_programs)
                             st.success(f"「{p['name']}」を削除しました。")
                             st.rerun()
+
+        # 全体のお値引き・端数調整（手直し）
+        with st.expander("✂️ 全体のお値引き・端数調整（手直し・任意）", expanded=False):
+            st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">合計金額に対して、まとめ割や端数の切り捨て・手動お値引き等を設定できます。</div>', unsafe_allow_html=True)
+            col_adj1, col_adj2 = st.columns([3, 2])
+            with col_adj1:
+                st.text_input(
+                    "調整項目名・理由",
+                    value=st.session_state.get("quote_overall_adj_note", "端数調整・お値引き"),
+                    placeholder="例: 端数調整、まとめ割、リピート割引 など",
+                    key="quote_overall_adj_note"
+                )
+            with col_adj2:
+                st.number_input(
+                    "調整金額（円 / 値引きはマイナス入力）",
+                    value=int(st.session_state.get("quote_overall_adj", 0)),
+                    step=500,
+                    key="quote_overall_adj",
+                    help="合計金額から直接差し引く（または加算する）金額を指定できます。値引きの場合は -1000 のようにマイナスで入力してください。"
+                )
 
         # 税金・表記オプション
         tax_options = ["税込（内税表記）", "税抜（+消費税）", "税込（10%内訳明記）"]
@@ -1897,7 +1967,10 @@ with tab1:
             """)
 
     # --- 全アイテムの合算計算 ---
-    total_price_base = sum(res["price_base"] for res in items_calculation_results)
+    items_total = sum(res["price_base"] for res in items_calculation_results)
+    overall_adj = int(st.session_state.get("quote_overall_adj", 0))
+    overall_note = st.session_state.get("quote_overall_adj_note", "端数調整・お値引き").strip() or "お値引き・調整"
+    total_price_base = max(0, items_total + overall_adj)
 
     # 税計算
     if "10%" in tax_option:
@@ -1928,6 +2001,11 @@ with tab1:
         for res in items_calculation_results:
             breakdown_items.append(
                 f'<div class="breakdown-item"><span style="font-weight: 500;">{res["detail"]}</span><span class="breakdown-price">{res["price_base"]:,} 円</span></div>'
+            )
+        if overall_adj != 0:
+            adj_color = "#059669" if overall_adj < 0 else "#2563EB"
+            breakdown_items.append(
+                f'<div class="breakdown-item" style="color: {adj_color}; font-weight: 600;"><span>✂️ {overall_note}</span><span class="breakdown-price">{overall_adj:+,} 円</span></div>'
             )
         breakdown_html = "".join(breakdown_items)
 
@@ -2046,15 +2124,20 @@ with tab1:
         spec_block = "■ 納品データの仕様・修正規定\n" + "\n".join(spec_lines)
 
         # 内訳リストのテキスト生成
-        if len(items_calculation_results) == 1:
+        if len(items_calculation_results) == 1 and overall_adj == 0:
             detail_items_text = f"（内訳：{items_calculation_results[0]['detail']}）"
             simple_items_summary = f"{items_calculation_results[0]['detail']}"
         else:
             detail_lines = ["【内訳明細】"]
             for i, res in enumerate(items_calculation_results):
                 detail_lines.append(f"・{i + 1}. {res['detail']}: {res['price_base']:,} 円")
+            if overall_adj != 0:
+                detail_lines.append(f"・{overall_note}: {overall_adj:+,} 円")
             detail_items_text = "\n" + "\n".join(detail_lines)
-            simple_items_summary = f"{len(items_calculation_results)}件合算（{items_calculation_results[0]['genre']} ほか）"
+            if overall_adj != 0:
+                simple_items_summary = f"{len(items_calculation_results)}件合算 ＋ {overall_note}（{overall_adj:+,}円）"
+            else:
+                simple_items_summary = f"{len(items_calculation_results)}件合算（{items_calculation_results[0]['genre']} ほか）"
 
         # 主な作業内容ブロック作成
         work_block_coconala = ""
