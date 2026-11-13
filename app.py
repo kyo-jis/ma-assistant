@@ -1117,12 +1117,26 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     }
 
-    /* コードブロックのフォントと余白改善 */
-    pre code {
+    /* コードブロック・メッセージ表示枠の自動折り返し（枠からはみ出さない） */
+    div[data-testid="stCodeBlock"], div[data-testid="stCode"], .stCodeBlock {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    div[data-testid="stCodeBlock"] pre, div[data-testid="stCode"] pre, .stCodeBlock pre, pre {
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
         font-size: 0.92rem !important;
-        line-height: 1.65 !important;
-        font-family: 'Consolas', 'Courier New', monospace !important;
+        line-height: 1.68 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif, 'Consolas', monospace !important;
         background-color: #F8FAFC !important;
+        overflow-x: hidden !important;
+    }
+    div[data-testid="stCodeBlock"] code, div[data-testid="stCode"] code, .stCodeBlock code, code {
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        font-family: inherit !important;
     }
 
     /* プロジェクト・ステータスバッジ */
