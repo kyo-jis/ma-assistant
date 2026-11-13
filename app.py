@@ -56,13 +56,15 @@ def save_custom_programs(programs: list[dict]):
         st.error(f"番組データの保存に失敗しました: {e}")
 
 # ==========================================
-# 署名データ（本名 / ココナラ・ランサーズ）の読み書き
+# 署名データ（本名 / ココナラ / ランサーズ）の読み書き
 # ==========================================
 SIGNATURES_FILE = os.path.join(os.path.dirname(__file__), "signatures_data.json")
+SIG_OPTIONS = ["なし", "ココナラ用", "ランサーズ用", "本名・ビジネス用"]
 
 def load_signatures() -> dict:
     default_sig = {
-        "coconala": "MAクリエイター（ココナラ・ランサーズ）",
+        "coconala": "MAクリエイター（ココナラ）",
+        "lancers": "MAクリエイター（ランサーズ）",
         "realname": "山田 太郎\n音声編集・MAミキサー\nMail: info@example.com"
     }
     if not os.path.exists(SIGNATURES_FILE):
@@ -75,7 +77,11 @@ def load_signatures() -> dict:
     try:
         with open(SIGNATURES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data if isinstance(data, dict) else default_sig
+            if isinstance(data, dict):
+                if "lancers" not in data:
+                    data["lancers"] = data.get("coconala", "MAクリエイター（ランサーズ）")
+                return data
+            return default_sig
     except Exception:
         return default_sig
 
@@ -87,15 +93,17 @@ def save_signatures(sig_data: dict):
         st.error(f"署名データの保存に失敗しました: {e}")
 
 def get_signature_text(sig_type: str) -> str:
-    if sig_type == "なし":
+    if not sig_type or sig_type == "なし":
         return ""
     sigs = load_signatures()
-    if sig_type == "ココナラ・ランサーズ用":
+    if sig_type in ["ココナラ用", "ココナラ・ランサーズ用"]:
         sig_body = sigs.get("coconala", "").strip()
+    elif sig_type == "ランサーズ用":
+        sig_body = sigs.get("lancers", sigs.get("coconala", "")).strip()
     elif sig_type == "本名・ビジネス用":
         sig_body = sigs.get("realname", "").strip()
     else:
-        return ""
+        sig_body = ""
     if not sig_body:
         return ""
     return f"\n\n{sig_body}"
@@ -234,6 +242,8 @@ if "proj_status" not in st.session_state:
     st.session_state.proj_status = "📝 お見積り中"
 if "proj_memo" not in st.session_state:
     st.session_state.proj_memo = ""
+if "proj_signature_type" not in st.session_state:
+    st.session_state.proj_signature_type = "なし"
 
 # 各タブ同期用キーの初期化
 for k in ["t1_client_name", "t2_client_name", "t3_client_name"]:
@@ -247,6 +257,18 @@ for k in ["t1_client_honorific", "t2_client_honorific", "t3_client_honorific"]:
 for k in ["t1_project_name", "t2_project_name", "t3_project_name"]:
     if k not in st.session_state:
         st.session_state[k] = st.session_state.proj_project_name
+
+for k in ["t1_sig_choice", "t2_sig_choice", "t3_sig_choice", "sb_sig_choice"]:
+    if k not in st.session_state:
+        st.session_state[k] = st.session_state.proj_signature_type
+
+def sync_signature_type(source_key: str):
+    new_val = st.session_state.get(source_key, "なし")
+    st.session_state.proj_signature_type = new_val
+    st.session_state.t1_sig_choice = new_val
+    st.session_state.t2_sig_choice = new_val
+    st.session_state.t3_sig_choice = new_val
+    st.session_state.sb_sig_choice = new_val
 
 def sync_client_name(source_key: str):
     new_val = st.session_state.get(source_key, "")
@@ -298,6 +320,7 @@ def clear_quote_widget_keys():
             "quote_audio_spec", "quote_inc_lufs14", "quote_inc_raw_note", "quote_audio_fmt",
             "quote_retake_choice", "custom_retake_policy", "quote_inc_rework_note",
             "sig_choice_t1", "sig_comm", "sig_eval",
+            "t1_sig_choice", "t2_sig_choice", "t3_sig_choice", "sb_sig_choice",
             "override_flag_", "override_val_", "quote_overall_adj"
         ])
     ]
@@ -451,6 +474,18 @@ def load_project_into_session(project: dict):
     if "sig_eval" in eval_data:
         st.session_state.sig_eval = eval_data["sig_eval"]
 
+    # 5. 署名設定の全タブ復元
+    saved_sig = project.get("signature_type") or qs.get("sig_choice_t1", comm_data.get("sig_comm", eval_data.get("sig_eval", "なし")))
+    if saved_sig == "ココナラ・ランサーズ用":
+        saved_sig = "ココナラ用"
+    if saved_sig not in SIG_OPTIONS:
+        saved_sig = "なし"
+    st.session_state.proj_signature_type = saved_sig
+    st.session_state.t1_sig_choice = saved_sig
+    st.session_state.t2_sig_choice = saved_sig
+    st.session_state.t3_sig_choice = saved_sig
+    st.session_state.sb_sig_choice = saved_sig
+
 def reset_to_new_project():
     clear_quote_widget_keys()
 
@@ -513,6 +548,13 @@ def reset_to_new_project():
     st.session_state.eval_impression = "とてもスムーズ"
     st.session_state.eval_appeal_flag = True
     st.session_state.sig_eval = "なし"
+
+    # 署名選択の全タブ初期化
+    st.session_state.proj_signature_type = "なし"
+    st.session_state.t1_sig_choice = "なし"
+    st.session_state.t2_sig_choice = "なし"
+    st.session_state.t3_sig_choice = "なし"
+    st.session_state.sb_sig_choice = "なし"
 
 def save_current_project_data(force_as_new: bool = False, target_id: str = None) -> str:
     projects = load_projects()
@@ -605,7 +647,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
         "retake_policy_choice": st.session_state.get("quote_retake_choice", "記載しない"),
         "custom_retake": st.session_state.get("custom_retake_policy", ""),
         "include_rework_fee_note": st.session_state.get("quote_inc_rework_note", False),
-        "sig_choice_t1": st.session_state.get("sig_choice_t1", "なし"),
+        "sig_choice_t1": st.session_state.get("t1_sig_choice", st.session_state.get("proj_signature_type", "なし")),
         "overall_adj_price": int(st.session_state.get("quote_overall_adj", 0)),
         "overall_adj_note": st.session_state.get("quote_overall_adj_note", "端数調整・お値引き")
     }
@@ -617,16 +659,17 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
         "url_meta": st.session_state.get("comm_url_meta", ""),
         "free_text": st.session_state.get("comm_free_text", ""),
         "closing": st.session_state.get("comm_closing", ""),
-        "sig_comm": st.session_state.get("sig_comm", "なし")
+        "sig_comm": st.session_state.get("t2_sig_choice", st.session_state.get("proj_signature_type", "なし"))
     }
 
     eval_data = {
         "impression": st.session_state.get("eval_impression", "とてもスムーズ"),
         "appeal_flag": st.session_state.get("eval_appeal_flag", True),
-        "sig_eval": st.session_state.get("sig_eval", "なし")
+        "sig_eval": st.session_state.get("t3_sig_choice", st.session_state.get("proj_signature_type", "なし"))
     }
 
     client_honorific = st.session_state.get("proj_client_honorific", "様")
+    signature_type = st.session_state.get("proj_signature_type", "なし")
     current_id = target_id or st.session_state.get("active_project_id", "new")
     if force_as_new or current_id == "new":
         new_id = f"proj_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -635,6 +678,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
             "name": display_name,
             "client_name": client,
             "client_honorific": client_honorific,
+            "signature_type": signature_type,
             "project_name": proj_title,
             "status": status,
             "memo": memo,
@@ -655,6 +699,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
                 p["name"] = display_name
                 p["client_name"] = client
                 p["client_honorific"] = client_honorific
+                p["signature_type"] = signature_type
                 p["project_name"] = proj_title
                 p["status"] = status
                 p["memo"] = memo
@@ -671,6 +716,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
                 "name": display_name,
                 "client_name": client,
                 "client_honorific": client_honorific,
+                "signature_type": signature_type,
                 "project_name": proj_title,
                 "status": status,
                 "memo": memo,
@@ -1193,6 +1239,18 @@ with st.sidebar:
         key="proj_status"
     )
 
+    cur_sig_p = st.session_state.get("sb_sig_choice", st.session_state.get("proj_signature_type", "なし"))
+    sig_p_idx = SIG_OPTIONS.index(cur_sig_p) if cur_sig_p in SIG_OPTIONS else 0
+    st.selectbox(
+        "🖋️ 署名の選択（案件基本）",
+        SIG_OPTIONS,
+        index=sig_p_idx,
+        key="sb_sig_choice",
+        on_change=sync_signature_type,
+        args=("sb_sig_choice",),
+        help="この案件で使用する署名を選択できます（各タブの画面でもワンクリックで切り替え可能）"
+    )
+
     st.text_area(
         "案件メモ・備忘録（任意）",
         value=st.session_state.get("proj_memo", ""),
@@ -1297,20 +1355,27 @@ with st.sidebar:
         st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">登録した署名は、各メッセージの末尾でワンクリックで使い分けできます。</div>', unsafe_allow_html=True)
         cur_sigs = load_signatures()
         sig_coco_val = st.text_area(
-            "ココナラ・ランサーズ用（クリエイター名・屋号等）",
+            "ココナラ用（クリエイター名・屋号等）",
             value=cur_sigs.get("coconala", ""),
             height=70,
             key="sig_coco_val"
         )
+        sig_lanc_val = st.text_area(
+            "ランサーズ用（クリエイター名・屋号等）",
+            value=cur_sigs.get("lancers", ""),
+            height=70,
+            key="sig_lanc_val"
+        )
         sig_real_val = st.text_area(
             "本名・ビジネス用（氏名・肩書・メール等）",
             value=cur_sigs.get("realname", ""),
-            height=90,
+            height=80,
             key="sig_real_val"
         )
         if st.button("💾 署名設定を保存", key="btn_save_sig_sb", use_container_width=True):
             save_signatures({
                 "coconala": sig_coco_val.strip(),
+                "lancers": sig_lanc_val.strip(),
                 "realname": sig_real_val.strip()
             })
             st.toast("✅ 署名を保存しました！", icon="🖋️")
@@ -2291,18 +2356,26 @@ with tab1:
 
         col_sig_t1_1, col_sig_t1_2 = st.columns([3, 2])
         with col_sig_t1_1:
-            sig_opts_t1 = ["なし", "ココナラ・ランサーズ用", "本名・ビジネス用"]
-            cur_sig_t1 = st.session_state.get("sig_choice_t1", "なし")
-            sig_t1_idx = sig_opts_t1.index(cur_sig_t1) if cur_sig_t1 in sig_opts_t1 else 0
+            cur_sig_t1 = st.session_state.get("t1_sig_choice", st.session_state.get("proj_signature_type", "なし"))
+            if cur_sig_t1 == "ココナラ・ランサーズ用":
+                cur_sig_t1 = "ココナラ用"
+            sig_t1_idx = SIG_OPTIONS.index(cur_sig_t1) if cur_sig_t1 in SIG_OPTIONS else 0
             selected_sig_t1 = st.radio(
-                "🖋️ 末尾の署名",
-                sig_opts_t1,
+                "🖋️ 末尾の署名を選択",
+                SIG_OPTIONS,
                 index=sig_t1_idx,
                 horizontal=True,
-                key="sig_choice_t1"
+                key="t1_sig_choice",
+                on_change=sync_signature_type,
+                args=("t1_sig_choice",)
             )
         with col_sig_t1_2:
-            st.caption("※署名はサイドバー「🖋️ 署名の事前登録・編集」で変更可能")
+            sig_prev_t1 = get_signature_text(selected_sig_t1).strip()
+            if sig_prev_t1:
+                first_line = sig_prev_t1.split("\n")[0]
+                st.caption(f"👀 署名プレビュー: **{first_line}**" + ("…" if "\n" in sig_prev_t1 else ""))
+            else:
+                st.caption("👀 署名プレビュー: （署名なし）")
 
         sig_append_t1 = get_signature_text(selected_sig_t1)
 
@@ -2496,16 +2569,28 @@ with tab2:
             key="comm_closing"
         )
 
-        sig_opts_t2 = ["なし", "ココナラ・ランサーズ用", "本名・ビジネス用"]
-        cur_sig_t2 = st.session_state.get("sig_comm", "なし")
-        sig_t2_idx = sig_opts_t2.index(cur_sig_t2) if cur_sig_t2 in sig_opts_t2 else 0
-        comm_sig = st.radio(
-            "🖋️ メッセージ末尾の署名",
-            sig_opts_t2,
-            index=sig_t2_idx,
-            horizontal=True,
-            key="sig_comm"
-        )
+        col_sig_t2_1, col_sig_t2_2 = st.columns([3, 2])
+        with col_sig_t2_1:
+            cur_sig_t2 = st.session_state.get("t2_sig_choice", st.session_state.get("proj_signature_type", "なし"))
+            if cur_sig_t2 == "ココナラ・ランサーズ用":
+                cur_sig_t2 = "ココナラ用"
+            sig_t2_idx = SIG_OPTIONS.index(cur_sig_t2) if cur_sig_t2 in SIG_OPTIONS else 0
+            comm_sig = st.radio(
+                "🖋️ メッセージ末尾の署名を選択",
+                SIG_OPTIONS,
+                index=sig_t2_idx,
+                horizontal=True,
+                key="t2_sig_choice",
+                on_change=sync_signature_type,
+                args=("t2_sig_choice",)
+            )
+        with col_sig_t2_2:
+            sig_prev_t2 = get_signature_text(comm_sig).strip()
+            if sig_prev_t2:
+                first_line = sig_prev_t2.split("\n")[0]
+                st.caption(f"👀 署名プレビュー: **{first_line}**" + ("…" if "\n" in sig_prev_t2 else ""))
+            else:
+                st.caption("👀 署名プレビュー: （署名なし）")
 
     # --- メッセージ生成ロジック ---
     def generate_comm_msg(tone: str) -> str:
@@ -2743,16 +2828,28 @@ with tab3:
             key="eval_appeal_flag"
         )
 
-        sig_opts_t3 = ["なし", "ココナラ・ランサーズ用", "本名・ビジネス用"]
-        cur_sig_t3 = st.session_state.get("sig_eval", "なし")
-        sig_t3_idx = sig_opts_t3.index(cur_sig_t3) if cur_sig_t3 in sig_opts_t3 else 0
-        eval_sig = st.radio(
-            "🖋️ メッセージ末尾の署名",
-            sig_opts_t3,
-            index=sig_t3_idx,
-            horizontal=True,
-            key="sig_eval"
-        )
+        col_sig_t3_1, col_sig_t3_2 = st.columns([3, 2])
+        with col_sig_t3_1:
+            cur_sig_t3 = st.session_state.get("t3_sig_choice", st.session_state.get("proj_signature_type", "なし"))
+            if cur_sig_t3 == "ココナラ・ランサーズ用":
+                cur_sig_t3 = "ココナラ用"
+            sig_t3_idx = SIG_OPTIONS.index(cur_sig_t3) if cur_sig_t3 in SIG_OPTIONS else 0
+            eval_sig = st.radio(
+                "🖋️ メッセージ末尾の署名を選択",
+                SIG_OPTIONS,
+                index=sig_t3_idx,
+                horizontal=True,
+                key="t3_sig_choice",
+                on_change=sync_signature_type,
+                args=("t3_sig_choice",)
+            )
+        with col_sig_t3_2:
+            sig_prev_t3 = get_signature_text(eval_sig).strip()
+            if sig_prev_t3:
+                first_line = sig_prev_t3.split("\n")[0]
+                st.caption(f"👀 署名プレビュー: **{first_line}**" + ("…" if "\n" in sig_prev_t3 else ""))
+            else:
+                st.caption("👀 署名プレビュー: （署名なし）")
 
     # --- 評価・納品コメント生成ロジック ---
     c_eval_disp = format_client_display(eval_client_name, eval_client_honorific)
