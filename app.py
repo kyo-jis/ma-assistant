@@ -224,6 +224,8 @@ if "active_project_id" not in st.session_state:
 
 if "proj_client_name" not in st.session_state:
     st.session_state.proj_client_name = ""
+if "proj_client_honorific" not in st.session_state:
+    st.session_state.proj_client_honorific = "様"
 if "proj_project_name" not in st.session_state:
     st.session_state.proj_project_name = ""
 if "proj_status" not in st.session_state:
@@ -236,6 +238,10 @@ for k in ["t1_client_name", "t2_client_name", "t3_client_name"]:
     if k not in st.session_state:
         st.session_state[k] = st.session_state.proj_client_name
 
+for k in ["t1_client_honorific", "t2_client_honorific", "t3_client_honorific"]:
+    if k not in st.session_state:
+        st.session_state[k] = st.session_state.proj_client_honorific
+
 for k in ["t1_project_name", "t2_project_name", "t3_project_name"]:
     if k not in st.session_state:
         st.session_state[k] = st.session_state.proj_project_name
@@ -247,12 +253,32 @@ def sync_client_name(source_key: str):
     st.session_state.t2_client_name = new_val
     st.session_state.t3_client_name = new_val
 
+def sync_client_honorific(source_key: str):
+    new_val = st.session_state.get(source_key, "様")
+    st.session_state.proj_client_honorific = new_val
+    st.session_state.t1_client_honorific = new_val
+    st.session_state.t2_client_honorific = new_val
+    st.session_state.t3_client_honorific = new_val
+
 def sync_project_name(source_key: str):
     new_val = st.session_state.get(source_key, "")
     st.session_state.proj_project_name = new_val
     st.session_state.t1_project_name = new_val
     st.session_state.t2_project_name = new_val
     st.session_state.t3_project_name = new_val
+
+def format_client_display(name: str, honorific: str = "様") -> str:
+    cleaned = name.strip() if name else ""
+    if not cleaned:
+        return ""
+    if not honorific or honorific == "なし":
+        return cleaned
+    # すでに敬称が付いている場合は二重付与しない
+    known_suffixes = ["様", "さん", "御中", "殿", "先生", "くん", "君", "ちゃん"]
+    for sfx in known_suffixes:
+        if cleaned.endswith(sfx):
+            return cleaned
+    return f"{cleaned} {honorific}"
 
 def clear_quote_widget_keys():
     keys_to_delete = [
@@ -281,15 +307,21 @@ def load_project_into_session(project: dict):
 
     st.session_state.active_project_id = project["id"]
     st.session_state.proj_client_name = project.get("client_name", "")
+    st.session_state.proj_client_honorific = project.get("client_honorific", "様")
     st.session_state.proj_project_name = project.get("project_name", "")
     st.session_state.proj_status = project.get("status", "📝 お見積り中")
     st.session_state.proj_memo = project.get("memo", "")
 
     st.session_state.t1_client_name = st.session_state.proj_client_name
+    st.session_state.t1_client_honorific = st.session_state.proj_client_honorific
     st.session_state.t1_project_name = st.session_state.proj_project_name
+
     st.session_state.t2_client_name = st.session_state.proj_client_name
+    st.session_state.t2_client_honorific = st.session_state.proj_client_honorific
     st.session_state.t2_project_name = st.session_state.proj_project_name
+
     st.session_state.t3_client_name = st.session_state.proj_client_name
+    st.session_state.t3_client_honorific = st.session_state.proj_client_honorific
     st.session_state.t3_project_name = st.session_state.proj_project_name
 
     # 1. 見積もりアイテム復元
@@ -421,15 +453,21 @@ def reset_to_new_project():
 
     st.session_state.active_project_id = "new"
     st.session_state.proj_client_name = ""
+    st.session_state.proj_client_honorific = "様"
     st.session_state.proj_project_name = ""
     st.session_state.proj_status = "📝 お見積り中"
     st.session_state.proj_memo = ""
 
     st.session_state.t1_client_name = ""
+    st.session_state.t1_client_honorific = "様"
     st.session_state.t1_project_name = ""
+
     st.session_state.t2_client_name = ""
+    st.session_state.t2_client_honorific = "様"
     st.session_state.t2_project_name = ""
+
     st.session_state.t3_client_name = ""
+    st.session_state.t3_client_honorific = "様"
     st.session_state.t3_project_name = ""
 
     st.session_state.quote_items = [{"id": 1, "genre": "番組", "duration": 15.0}]
@@ -454,7 +492,7 @@ def reset_to_new_project():
     st.session_state.quote_retake_choice = "記載しない"
     st.session_state.custom_retake_policy = ""
     st.session_state.quote_inc_rework_note = False
-    st.session_state.sig_choice_t1 = "ココナラ・ランサーズ用"
+    st.session_state.sig_choice_t1 = "なし"
     st.session_state.quote_overall_adj = 0
     st.session_state.quote_overall_adj_note = "端数調整・お値引き"
 
@@ -465,12 +503,12 @@ def reset_to_new_project():
     st.session_state.comm_url_meta = ""
     st.session_state.comm_free_text = ""
     st.session_state.comm_closing = "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。"
-    st.session_state.sig_comm = "ココナラ・ランサーズ用"
+    st.session_state.sig_comm = "なし"
 
     # 納品タブのデフォルト
     st.session_state.eval_impression = "とてもスムーズ"
     st.session_state.eval_appeal_flag = True
-    st.session_state.sig_eval = "ココナラ・ランサーズ用"
+    st.session_state.sig_eval = "なし"
 
 def save_current_project_data():
     projects = load_projects()
@@ -563,7 +601,7 @@ def save_current_project_data():
         "retake_policy_choice": st.session_state.get("quote_retake_choice", "記載しない"),
         "custom_retake": st.session_state.get("custom_retake_policy", ""),
         "include_rework_fee_note": st.session_state.get("quote_inc_rework_note", False),
-        "sig_choice_t1": st.session_state.get("sig_choice_t1", "ココナラ・ランサーズ用"),
+        "sig_choice_t1": st.session_state.get("sig_choice_t1", "なし"),
         "overall_adj_price": int(st.session_state.get("quote_overall_adj", 0)),
         "overall_adj_note": st.session_state.get("quote_overall_adj_note", "端数調整・お値引き")
     }
@@ -575,15 +613,16 @@ def save_current_project_data():
         "url_meta": st.session_state.get("comm_url_meta", ""),
         "free_text": st.session_state.get("comm_free_text", ""),
         "closing": st.session_state.get("comm_closing", ""),
-        "sig_comm": st.session_state.get("sig_comm", "ココナラ・ランサーズ用")
+        "sig_comm": st.session_state.get("sig_comm", "なし")
     }
 
     eval_data = {
         "impression": st.session_state.get("eval_impression", "とてもスムーズ"),
         "appeal_flag": st.session_state.get("eval_appeal_flag", True),
-        "sig_eval": st.session_state.get("sig_eval", "ココナラ・ランサーズ用")
+        "sig_eval": st.session_state.get("sig_eval", "なし")
     }
 
+    client_honorific = st.session_state.get("proj_client_honorific", "様")
     current_id = st.session_state.get("active_project_id", "new")
     if current_id == "new":
         new_id = f"proj_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -591,6 +630,7 @@ def save_current_project_data():
             "id": new_id,
             "name": display_name,
             "client_name": client,
+            "client_honorific": client_honorific,
             "project_name": proj_title,
             "status": status,
             "memo": memo,
@@ -609,6 +649,7 @@ def save_current_project_data():
             if p["id"] == current_id:
                 p["name"] = display_name
                 p["client_name"] = client
+                p["client_honorific"] = client_honorific
                 p["project_name"] = proj_title
                 p["status"] = status
                 p["memo"] = memo
@@ -1287,14 +1328,28 @@ with tab1:
         """, unsafe_allow_html=True)
 
         # 宛名・案件名（全タブ連動）
-        client_name = st.text_input(
-            "クライアント名（任意）",
-            value=st.session_state.get("t1_client_name", ""),
-            placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
-            key="t1_client_name",
-            on_change=sync_client_name,
-            args=("t1_client_name",)
-        )
+        col_c_name, col_c_hon = st.columns([3, 1])
+        with col_c_name:
+            client_name = st.text_input(
+                "クライアント名（任意）",
+                value=st.session_state.get("t1_client_name", ""),
+                placeholder="例: 株式会社〇〇 / 田中（敬称は自動付与）",
+                key="t1_client_name",
+                on_change=sync_client_name,
+                args=("t1_client_name",)
+            )
+        with col_c_hon:
+            honorific_options = ["様", "さん", "なし"]
+            cur_hon = st.session_state.get("t1_client_honorific", "様")
+            hon_idx = honorific_options.index(cur_hon) if cur_hon in honorific_options else 0
+            client_honorific = st.selectbox(
+                "敬称",
+                honorific_options,
+                index=hon_idx,
+                key="t1_client_honorific",
+                on_change=sync_client_honorific,
+                args=("t1_client_honorific",)
+            )
         project_title = st.text_input(
             "案件名・案件全体の概要（任意）",
             value=st.session_state.get("t1_project_name", ""),
@@ -1580,9 +1635,9 @@ with tab1:
                         )
                         item["manual_price"] = custom_price
                         diff = custom_price - item_price_base
-                        diff_text = f"（{diff:+,}円 手直し）" if diff != 0 else "（手直し指定）"
-                        item_detail_text = f"{item_display_genre} {diff_text}"
-                        item_breakdown_text = f"手直し指定金額 = {custom_price:,}円"
+                        if diff != 0:
+                            st.caption(f"💡 自動計算（{item_price_base:,}円）から {diff:+,}円 手直し適用中")
+                        item_breakdown_text = f"指定金額 = {custom_price:,}円"
                         item_price_base = custom_price
                     else:
                         st.markdown(f'<div style="text-align: right; font-size: 0.88rem; color: #475569; padding-top: 0.2rem;">小計（自動計算）: <b style="font-size: 1.05rem; color: #1E3A8A;">{item_price_base:,}</b> 円</div>', unsafe_allow_html=True)
@@ -2024,9 +2079,9 @@ with tab1:
         )
         st.markdown(metric_card_html, unsafe_allow_html=True)
 
-        client_raw = client_name.strip()
-        client_header = f"{client_raw}\n\n" if client_raw else ""
-        client_header_short = f"{client_raw}\n" if client_raw else ""
+        client_display_name = format_client_display(client_name, client_honorific)
+        client_header = f"{client_display_name}\n\n" if client_display_name else ""
+        client_header_short = f"{client_display_name}\n" if client_display_name else ""
         project_display = f"「{project_title.strip()}」" if project_title.strip() else ""
 
         # スケジュールブロック作成
@@ -2180,10 +2235,13 @@ with tab1:
 
         col_sig_t1_1, col_sig_t1_2 = st.columns([3, 2])
         with col_sig_t1_1:
+            sig_opts_t1 = ["なし", "ココナラ・ランサーズ用", "本名・ビジネス用"]
+            cur_sig_t1 = st.session_state.get("sig_choice_t1", "なし")
+            sig_t1_idx = sig_opts_t1.index(cur_sig_t1) if cur_sig_t1 in sig_opts_t1 else 0
             selected_sig_t1 = st.radio(
                 "🖋️ 末尾の署名",
-                ["ココナラ・ランサーズ用", "本名・ビジネス用", "なし"],
-                index=0,
+                sig_opts_t1,
+                index=sig_t1_idx,
                 horizontal=True,
                 key="sig_choice_t1"
             )
@@ -2280,14 +2338,28 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
 
-        comm_client_name = st.text_input(
-            "宛名 / クライアント名（任意）",
-            value=st.session_state.get("t2_client_name", ""),
-            placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
-            key="t2_client_name",
-            on_change=sync_client_name,
-            args=("t2_client_name",)
-        )
+        col_comm_c1, col_comm_c2 = st.columns([3, 1])
+        with col_comm_c1:
+            comm_client_name = st.text_input(
+                "宛名 / クライアント名（任意）",
+                value=st.session_state.get("t2_client_name", ""),
+                placeholder="例: 株式会社〇〇 / 田中（敬称は自動付与）",
+                key="t2_client_name",
+                on_change=sync_client_name,
+                args=("t2_client_name",)
+            )
+        with col_comm_c2:
+            honorific_options = ["様", "さん", "なし"]
+            cur_t2_hon = st.session_state.get("t2_client_honorific", "様")
+            hon_t2_idx = honorific_options.index(cur_t2_hon) if cur_t2_hon in honorific_options else 0
+            comm_client_honorific = st.selectbox(
+                "敬称",
+                honorific_options,
+                index=hon_t2_idx,
+                key="t2_client_honorific",
+                on_change=sync_client_honorific,
+                args=("t2_client_honorific",)
+            )
 
         c_comm_p1, c_comm_p2 = st.columns([1, 1])
         with c_comm_p1:
@@ -2368,17 +2440,21 @@ with tab2:
             key="comm_closing"
         )
 
+        sig_opts_t2 = ["なし", "ココナラ・ランサーズ用", "本名・ビジネス用"]
+        cur_sig_t2 = st.session_state.get("sig_comm", "なし")
+        sig_t2_idx = sig_opts_t2.index(cur_sig_t2) if cur_sig_t2 in sig_opts_t2 else 0
         comm_sig = st.radio(
             "🖋️ メッセージ末尾の署名",
-            ["ココナラ・ランサーズ用", "本名・ビジネス用", "なし"],
-            index=0,
+            sig_opts_t2,
+            index=sig_t2_idx,
             horizontal=True,
             key="sig_comm"
         )
 
     # --- メッセージ生成ロジック ---
     def generate_comm_msg(tone: str) -> str:
-        c_header = f"{comm_client_name.strip()}\n\n" if comm_client_name.strip() else ""
+        c_disp = format_client_display(comm_client_name, comm_client_honorific)
+        c_header = f"{c_disp}\n\n" if c_disp else ""
         proj_prefix = f"「{comm_project_name.strip()}」の" if comm_project_name.strip() else ""
 
         url_lines = []
@@ -2559,14 +2635,28 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
 
-        eval_client_name = st.text_input(
-            "クライアント名（任意）",
-            value=st.session_state.get("t3_client_name", ""),
-            placeholder="例: 〇〇様（未入力時は宛名なしで開始）",
-            key="t3_client_name",
-            on_change=sync_client_name,
-            args=("t3_client_name",)
-        )
+        col_eval_c1, col_eval_c2 = st.columns([3, 1])
+        with col_eval_c1:
+            eval_client_name = st.text_input(
+                "クライアント名（任意）",
+                value=st.session_state.get("t3_client_name", ""),
+                placeholder="例: 株式会社〇〇 / 田中（敬称は自動付与）",
+                key="t3_client_name",
+                on_change=sync_client_name,
+                args=("t3_client_name",)
+            )
+        with col_eval_c2:
+            honorific_options = ["様", "さん", "なし"]
+            cur_t3_hon = st.session_state.get("t3_client_honorific", "様")
+            hon_t3_idx = honorific_options.index(cur_t3_hon) if cur_t3_hon in honorific_options else 0
+            eval_client_honorific = st.selectbox(
+                "敬称",
+                honorific_options,
+                index=hon_t3_idx,
+                key="t3_client_honorific",
+                on_change=sync_client_honorific,
+                args=("t3_client_honorific",)
+            )
 
         eval_project_name = st.text_input(
             "案件名（任意）",
@@ -2597,18 +2687,21 @@ with tab3:
             key="eval_appeal_flag"
         )
 
+        sig_opts_t3 = ["なし", "ココナラ・ランサーズ用", "本名・ビジネス用"]
+        cur_sig_t3 = st.session_state.get("sig_eval", "なし")
+        sig_t3_idx = sig_opts_t3.index(cur_sig_t3) if cur_sig_t3 in sig_opts_t3 else 0
         eval_sig = st.radio(
             "🖋️ メッセージ末尾の署名",
-            ["ココナラ・ランサーズ用", "本名・ビジネス用", "なし"],
-            index=0,
+            sig_opts_t3,
+            index=sig_t3_idx,
             horizontal=True,
             key="sig_eval"
         )
 
     # --- 評価・納品コメント生成ロジック ---
-    c_eval_name = eval_client_name.strip()
-    eval_hdr = f"{c_eval_name}\n\n" if c_eval_name else ""
-    eval_hdr_short = f"{c_eval_name}\n" if c_eval_name else ""
+    c_eval_disp = format_client_display(eval_client_name, eval_client_honorific)
+    eval_hdr = f"{c_eval_disp}\n\n" if c_eval_disp else ""
+    eval_hdr_short = f"{c_eval_disp}\n" if c_eval_disp else ""
     target_project = f"「{eval_project_name.strip()}」の" if eval_project_name.strip() else ""
 
     # アピール文（トーン別）
