@@ -434,7 +434,7 @@ def load_project_into_session(project: dict):
             st.session_state.txt_custom_task = qs["c_custom_task"]
 
         if "audio_spec" in qs:
-            st.session_state.quote_audio_spec = qs["audio_spec"]
+            st.session_state.quote_audio_spec = qs["audio_spec"].replace("LUFS", "LKFS")
         if "include_lufs14_note" in qs:
             st.session_state.quote_inc_lufs14 = qs["include_lufs14_note"]
         if "include_raw_audio_note" in qs:
@@ -2054,8 +2054,8 @@ with tab1:
             st.markdown("##### 🎚️ 音声仕様・修正規定")
             audio_spec_opts = [
                 "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)",
-                "目標ラウドネス値 -14.0 LUFS (TP -1.0dBTP以下)",
-                "目標ラウドネス値 -16.0 LUFS (TP -1.0dBTP以下)",
+                "目標ラウドネス値 -14.0 LKFS (TP -1.0dBTP以下)",
+                "目標ラウドネス値 -16.0 LKFS (TP -1.0dBTP以下)",
                 "クライアント様指定基準に準拠",
                 "指定なし（最適なバランスに調整）"
             ]
@@ -2069,11 +2069,11 @@ with tab1:
             )
 
             include_lufs14_note = False
-            if "14.0 LUFS" in audio_spec:
+            if "14.0" in audio_spec:
                 include_lufs14_note = st.checkbox(
-                    "音質維持に関する注記を含める（-14 LUFSが困難な場合の案内）",
+                    "音質維持に関する注記を含める（-14 LKFSが困難な場合の案内）",
                     value=st.session_state.get("quote_inc_lufs14", False),
-                    help="作品の構成や音割れ・ノイズ浮き防止のため、最適な聴きやすさ（-15〜-16 LUFS前後）を優先する旨の案内です。",
+                    help="作品の構成や音割れ・ノイズ浮き防止のため、最適な聴きやすさ（-15〜-16 LKFS前後）を優先する旨の案内です。",
                     key="quote_inc_lufs14"
                 )
 
@@ -2291,7 +2291,7 @@ with tab1:
             f"・音声レベル： {audio_spec}"
         ]
         if include_lufs14_note:
-            spec_lines.append("※作品全体のダイナミクス（音の強弱）や静寂の多い構成の場合、過度な音割れやノイズ浮きを防ぎ、聴きやすさを最優先して -15〜-16 LUFS 前後で着地・調整させていただく場合がございます。")
+            spec_lines.append("※作品全体のダイナミクス（音の強弱）や静寂の多い構成の場合、過度な音割れやノイズ浮きを防ぎ、聴きやすさを最優先して -15〜-16 LKFS 前後で着地・調整させていただく場合がございます。")
         if retake_policy != "記載しない":
             spec_lines.append(f"・修正対応： {retake_policy}")
         if include_rework_fee_note:
@@ -2384,7 +2384,7 @@ with tab1:
         sig_append_t1 = get_signature_text(selected_sig_t1)
 
         # パターン1: ココナラ・クラウドソーシング特化型
-        quote_msg_coconala = f"""{client_header}いつも大変お世話になっております。
+        quote_msg_coconala = f"""{client_header}いつもお世話になっております。
 ご相談いただきました{project_display}音声編集（MA）のお見積もり・スケジュール案をお送りいたします。
 
 ■ お見積り金額
@@ -2414,7 +2414,7 @@ with tab1:
 仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！""" + sig_append_t1
 
         # パターン3: ビジネスメール・詳細版
-        quote_msg_detailed = f"""{client_header}いつも大変お世話になっております。
+        quote_msg_detailed = f"""{client_header}いつもお世話になっております。
 ご相談いただきました{project_display}音声編集（MA）につきまして、お見積もりと制作進行案をご案内申し上げます。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2627,7 +2627,7 @@ with tab2:
                 greeting = "いつもお世話になっております。"
                 lead = f"{proj_prefix}{file_label}をお送りいたします。"
             else:
-                greeting = "いつも大変お世話になっております。"
+                greeting = "いつもお世話になっております。"
                 lead = f"ご依頼いただいておりました{proj_prefix}{file_label}の書き出しが完了いたしましたので、ダウンロードURLをご案内申し上げます。"
 
         elif comm_pattern == "🎧 初稿・ラフミックス送付（確認依頼）":
@@ -2642,7 +2642,7 @@ with tab2:
                 if not comment_section:
                     comment_section = "話者の聞き取りやすさや、BGM・効果音（SE）とのバランスを中心にご確認いただけますと幸いです。"
             else:
-                greeting = "いつも大変お世話になっております。"
+                greeting = "いつもお世話になっております。"
                 lead = f"{proj_prefix}{file_label}の一次編集（初稿）作業が完了いたしましたので、共有データをお送り申し上げます。"
                 if not comment_section:
                     comment_section = "規定仕様および全体のバランス調整を行っております。ご視聴いただき、ご意見や調整希望がございましたらお知らせください。"
@@ -2655,7 +2655,7 @@ with tab2:
                 greeting = "いつもお世話になっております。"
                 lead = f"ご指示いただきました修正箇所を反映した{file_label}をお送りいたします。"
             else:
-                greeting = "いつも大変お世話になっております。"
+                greeting = "いつもお世話になっております。"
                 lead = f"過日ご指示を賜りました修正箇所につきまして、反映および再調整を行った{file_label}をお送り申し上げます。"
 
         elif comm_pattern == "📦 最終完成データ納品（検収依頼）":
@@ -2665,12 +2665,12 @@ with tab2:
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "問題ございませんでしたら、このまま検収・完了のお手続きへお進みいただけますと幸いです。\nどうぞよろしくお願いいたします。"
             elif tone == "standard":
-                greeting = "いつも大変お世話になっております。"
+                greeting = "いつもお世話になっております。"
                 lead = f"{proj_prefix}すべての音声編集（MA）工程が完了いたしましたので、最終納品データをお送りいたします。"
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "データをご確認いただき、問題がないようでしたら完了のお手続き（検収・評価）へお進みいただけますと幸いです。\nこの度はご依頼いただき、誠にありがとうございました！"
             else:
-                greeting = "いつも大変お世話になっております。"
+                greeting = "いつもお世話になっております。"
                 lead = f"{proj_prefix}すべての整音およびマスタリング工程が完了いたしましたので、最終完パケデータ一式をご納品申し上げます。"
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "最終データをご査収いただき、問題がございませんでしたら検収のお手続きを賜りますようお願い申し上げます。\n今後とも何卒よろしくお願い申し上げます。"
@@ -2687,13 +2687,13 @@ with tab2:
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "予定スケジュールに沿って丁寧に進めてまいります。初稿のお届けまで今しばらくお待ちくださいませ。\n引き続きよろしくお願いいたします。"
             else:
-                greeting = "いつも大変お世話になっております。"
+                greeting = "いつもお世話になっております。"
                 lead = f"ご手配いただきました{proj_prefix}制作素材一式を確かに受領いたしました。迅速にご対応いただき厚く御礼申し上げます。\nこれより規定仕様に準拠した整音・ミックス作業を開始いたします。"
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "予定納期に向けて進捗を進めてまいりますので、何卒よろしくお願い申し上げます。"
 
         else:  # 💬 自由作成（カスタム）
-            greeting = "お世話になります。" if tone == "simple" else ("いつもお世話になっております。" if tone == "standard" else "いつも大変お世話になっております。")
+            greeting = "お世話になります。" if tone == "simple" else ("いつもお世話になっております。" if tone == "standard" else "いつもお世話になっております。")
             lead = ""
 
         # 各ブロックの結合
@@ -2946,7 +2946,7 @@ with tab3:
 
     # 3. 納品メッセージ（標準版 & フォーマル版）
     if impression == "とてもスムーズ":
-        msg_standard = f"""{eval_hdr}いつも大変お世話になっております。
+        msg_standard = f"""{eval_hdr}いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました！
 
 ご指示や素材のご手配が非常に的確で、メッセージのレスポンスも迅速にしていただいたおかげで、終始大変スムーズに作業を進行することができました。心より感謝申し上げます。
@@ -2955,7 +2955,7 @@ with tab3:
 
 今後ともどうぞよろしくお願いいたします。""" + sig_eval_append
 
-        msg_formal = f"""{eval_hdr}いつも大変お世話になっております。
+        msg_formal = f"""{eval_hdr}いつもお世話になっております。
 この度は、{target_project}音声編集（MA）業務のご依頼を賜り、誠にありがとうございました。
 
 ご指示や素材のご手配を迅速にいただき、円滑に作業を進行することができましたこと、深く感謝申し上げます。
@@ -2965,7 +2965,7 @@ with tab3:
 今後とも何卒よろしくお願い申し上げます。""" + sig_eval_append
 
     elif impression == "普通":
-        msg_standard = f"""{eval_hdr}いつも大変お世話になっております。
+        msg_standard = f"""{eval_hdr}いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
 ご丁寧にご対応いただき、無事に納品完了まで進めることができました。
@@ -2975,7 +2975,7 @@ with tab3:
 
 また機会がございましたら、どうぞよろしくお願い申し上げます。""" + sig_eval_append
 
-        msg_formal = f"""{eval_hdr}いつも大変お世話になっております。
+        msg_formal = f"""{eval_hdr}いつもお世話になっております。
 この度は、{target_project}音声編集（MA）業務のご依頼を賜り、心より御礼申し上げます。
 
 ご丁寧なご連携をいただき、無事に納品工程を完了することができました。
