@@ -1098,23 +1098,27 @@ st.markdown("""
 
     /* タブデザイン */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
+        display: flex;
+        flex-wrap: wrap !important;
+        gap: 8px;
         background-color: #F8FAFC;
-        padding: 5px;
+        padding: 6px;
         border-radius: 10px;
         border: 1px solid #E2E8F0;
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 8px 18px;
+        padding: 9px 20px;
+        font-size: 0.95rem;
         font-weight: 600;
-        border-radius: 7px;
-        color: #64748B;
+        border-radius: 8px;
+        color: #475569;
         transition: all 0.2s ease;
     }
     .stTabs [aria-selected="true"] {
         background-color: #FFFFFF !important;
         color: #2563EB !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+        font-weight: 700;
     }
 
     /* コードブロック・メッセージ表示枠の自動折り返し（枠からはみ出さない） */
@@ -2782,18 +2786,17 @@ with tab2:
 # タブ3: 評価コメント作成
 # ==========================================
 with tab3:
-    col_eval_input, col_eval_result = st.columns([1, 1], gap="large")
-
-    with col_eval_input:
+    # --- STEP 1: 取引状況・設定（上部パネル・全幅） ---
+    with st.container(border=True):
         st.markdown("""
-        <div class="section-title">
+        <div class="section-title" style="margin-bottom: 8px;">
             <span class="step-badge step-badge-blue">STEP 1</span>
-            <span>取引状況・トーンの設定</span>
+            <span>取引状況・メッセージ設定</span>
         </div>
         """, unsafe_allow_html=True)
 
-        col_eval_c1, col_eval_c2 = st.columns([3, 1])
-        with col_eval_c1:
+        col_t3_c1, col_t3_c2, col_t3_c3 = st.columns([3, 1.2, 3.8])
+        with col_t3_c1:
             eval_client_name = st.text_input(
                 "クライアント名（任意）",
                 value=st.session_state.get("t3_client_name", ""),
@@ -2801,7 +2804,7 @@ with tab3:
                 on_change=sync_client_name,
                 args=("t3_client_name",)
             )
-        with col_eval_c2:
+        with col_t3_c2:
             honorific_options = ["様", "さん", "なし"]
             cur_t3_hon = st.session_state.get("t3_client_honorific", "様")
             hon_t3_idx = honorific_options.index(cur_t3_hon) if cur_t3_hon in honorific_options else 0
@@ -2813,43 +2816,42 @@ with tab3:
                 on_change=sync_client_honorific,
                 args=("t3_client_honorific",)
             )
+        with col_t3_c3:
+            eval_project_name = st.text_input(
+                "案件名（任意）",
+                value=st.session_state.get("t3_project_name", ""),
+                key="t3_project_name",
+                on_change=sync_project_name,
+                args=("t3_project_name",)
+            )
 
-        eval_project_name = st.text_input(
-            "案件名（任意）",
-            value=st.session_state.get("t3_project_name", ""),
-            key="t3_project_name",
-            on_change=sync_project_name,
-            args=("t3_project_name",)
-        )
-
-        # 1. やり取りの印象
-        impression_options = ["とてもスムーズ", "普通", "少し時間がかかった", "連絡途絶（返信なし・音信不通）"]
-        cur_imp = st.session_state.get("eval_impression", "とてもスムーズ")
-        imp_idx = impression_options.index(cur_imp) if cur_imp in impression_options else 0
-        impression = st.selectbox(
-            "やり取りの印象",
-            impression_options,
-            index=imp_idx,
-            help="相手の対応スピードややり取りの円滑さに合わせてコメントのトーンを自動調整します。",
-            key="eval_impression"
-        )
-
-        # 2. 次回へのアピール
-        appeal_flag = st.checkbox(
-            "次回へのアピールを含める",
-            value=st.session_state.get("eval_appeal_flag", True),
-            help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。",
-            key="eval_appeal_flag"
-        )
-
-        col_sig_t3_1, col_sig_t3_2 = st.columns([3, 2])
-        with col_sig_t3_1:
+        col_t3_s1, col_t3_s2, col_t3_s3 = st.columns([2.5, 2.2, 3.3])
+        with col_t3_s1:
+            impression_options = ["とてもスムーズ", "普通", "少し時間がかかった", "連絡途絶（返信なし・音信不通）"]
+            cur_imp = st.session_state.get("eval_impression", "とてもスムーズ")
+            imp_idx = impression_options.index(cur_imp) if cur_imp in impression_options else 0
+            impression = st.selectbox(
+                "やり取りの印象",
+                impression_options,
+                index=imp_idx,
+                help="相手の対応スピードややり取りの円滑さに合わせてコメントのトーンを自動調整します。",
+                key="eval_impression"
+            )
+        with col_t3_s2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            appeal_flag = st.checkbox(
+                "次回へのアピールを含める",
+                value=st.session_state.get("eval_appeal_flag", True),
+                help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。",
+                key="eval_appeal_flag"
+            )
+        with col_t3_s3:
             cur_sig_t3 = st.session_state.get("t3_sig_choice", st.session_state.get("proj_signature_type", "なし"))
             if cur_sig_t3 == "ココナラ・ランサーズ用":
                 cur_sig_t3 = "ココナラ用"
             sig_t3_idx = SIG_OPTIONS.index(cur_sig_t3) if cur_sig_t3 in SIG_OPTIONS else 0
             eval_sig = st.radio(
-                "🖋️ メッセージ末尾の署名を選択",
+                "🖋️ 署名を選択",
                 SIG_OPTIONS,
                 index=sig_t3_idx,
                 horizontal=True,
@@ -2857,13 +2859,12 @@ with tab3:
                 on_change=sync_signature_type,
                 args=("t3_sig_choice",)
             )
-        with col_sig_t3_2:
             sig_prev_t3 = get_signature_text(eval_sig).strip()
             if sig_prev_t3:
                 first_line = sig_prev_t3.split("\n")[0]
-                st.caption(f"👀 署名プレビュー: **{first_line}**" + ("…" if "\n" in sig_prev_t3 else ""))
+                st.caption(f"👀 署名: **{first_line}**" + ("…" if "\n" in sig_prev_t3 else ""))
             else:
-                st.caption("👀 署名プレビュー: （署名なし）")
+                st.caption("👀 署名: （署名なし）")
 
     # --- 評価・納品コメント生成ロジック ---
     c_eval_disp = format_client_display(eval_client_name, eval_client_honorific)
@@ -3087,64 +3088,70 @@ with tab3:
 またの機会がございましたら、何卒よろしくお願い申し上げます。
 敬具""" + sig_eval_append
 
-    # --- 右カラム: 生成結果 ---
-    with col_eval_result:
-        st.markdown("""
-        <div class="section-title">
-            <span class="step-badge step-badge-teal">STEP 2</span>
-            <span>納品・評価コメントのコピー</span>
-        </div>
-        <div class="copy-tip">
-            💡 各カード右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
-        </div>
-        """, unsafe_allow_html=True)
+    # --- STEP 2: コメント・メッセージの選択とコピー（全幅） ---
+    st.markdown("""
+    <div class="section-title" style="margin-top: 20px;">
+        <span class="step-badge step-badge-teal">STEP 2</span>
+        <span>納品・評価コメントのコピー</span>
+    </div>
+    <div class="copy-tip">
+        💡 各カード右上の <b>📋（コピーアイコン）</b> をクリックすると、一瞬でクリップボードにコピーできます。
+    </div>
+    """, unsafe_allow_html=True)
 
-        subtab1, subtab2, subtab3, subtab4, subtab5 = st.tabs([
-            "⭐ 評価コメント（レビュー短文集）",
-            "⚡ 納品メッセージ（超シンプル集）",
-            "⏳ 連絡途絶・正式納品（3パターン）",
-            "📝 納品メッセージ（標準・丁寧）",
-            "👔 納品メッセージ（フォーマル）"
-        ])
+    main_tab1, main_tab2, main_tab3 = st.tabs([
+        "📦 納品メッセージ（通常）",
+        "⏳ 連絡途絶時の正式納品（3パターン）",
+        "⭐ 取引評価コメント（相手レビュー欄用）"
+    ])
 
-        with subtab1:
-            st.markdown("##### ⭐ プラットフォーム評価欄用（レビュー短文・厳選パターン）")
-            st.caption("💡 ココナラ・ランサーズ等の取引完了時の評価入力欄に最適です。右上の 📋 からワンクリックでコピーできます。")
-            for title, rev_text in review_patterns:
-                with st.container(border=True):
-                    st.markdown(f"**{title}**")
-                    st.code(rev_text, language="text")
-
-        with subtab2:
-            st.markdown("##### ⚡ 納品メッセージ（超シンプル・短文チャット集）")
-            st.caption("💡 チャットや要点のみの送付に最適です。右上の 📋 からワンクリックでコピーできます。")
+    with main_tab1:
+        st.markdown("##### 📦 通常の納品メッセージ（トークルーム・チャット送信用）")
+        delivery_style = st.radio(
+            "形式・トーンを選択してください：",
+            [
+                "⚡ 超シンプル集（チャット・即答用 4選）",
+                "📝 標準版（バランス・丁寧）",
+                "👔 フォーマル版（ビジネス・企業向け）"
+            ],
+            horizontal=True,
+            key="t3_delivery_style"
+        )
+        if delivery_style == "⚡ 超シンプル集（チャット・即答用 4選）":
+            st.caption("💡 チャットや要点のみの送付に最適です。各カード右上の 📋 からワンクリックでコピーできます。")
             for title, q_text in quick_delivery_patterns:
                 with st.container(border=True):
                     st.markdown(f"**{title}**")
                     st.code(q_text, language="markdown")
-
-        with subtab3:
-            st.markdown("##### ⏳ 連絡途絶・返信ストップ時の正式納品メッセージ（厳選3パターン）")
-            st.caption("💡 一定期間連絡が取れなくなったクライアントに対し、進行管理や自動クローズ（正式な納品）を行うためのメッセージです。状況や相手に合わせて右上の 📋 からワンクリックでコピーできます。")
-            for title, unresp_text in unresponsive_patterns:
-                with st.container(border=True):
-                    st.markdown(f"**{title}**")
-                    st.code(unresp_text, language="markdown")
-
-            with st.expander("ℹ️ 取引クローズ後の評価コメント例（レビュー欄用）"):
-                st.caption("💡 ココナラやクラウドソーシング等で自動クローズ後、相手への評価入力が必要な場合にご活用ください。")
-                for r_title, r_text in unresponsive_reviews:
-                    st.markdown(f"**{r_title}**")
-                    st.code(r_text, language="text")
-
-        with subtab4:
-            st.markdown("##### 📝 標準版（バランス・親しみやすい丁寧さ）")
+        elif delivery_style == "📝 標準版（バランス・丁寧）":
+            st.caption("💡 丁寧さと親しみやすさを両立した標準的な納品メッセージです。")
             st.code(msg_standard, language="markdown")
             with st.expander("✏️ テキストを直接編集したい場合"):
                 st.text_area("編集用", value=msg_standard, height=250, key="edit_ev_std")
-
-        with subtab5:
-            st.markdown("##### 👔 フォーマル版（ビジネス・企業向け）")
+        else:
+            st.caption("💡 企業・法人クライアント向けのフォーマルな挨拶文付き納品メッセージです。")
             st.code(msg_formal, language="markdown")
             with st.expander("✏️ テキストを直接編集したい場合"):
                 st.text_area("編集用", value=msg_formal, height=280, key="edit_ev_formal")
+
+    with main_tab2:
+        st.markdown("##### ⏳ 連絡途絶・返信ストップ時の正式納品メッセージ（厳選3パターン）")
+        st.caption("💡 一定期間連絡が取れなくなったクライアントに対し、進行管理や自動クローズ（正式な納品）を行うためのメッセージです。状況や相手に合わせて右上の 📋 からワンクリックでコピーできます。")
+        for title, unresp_text in unresponsive_patterns:
+            with st.container(border=True):
+                st.markdown(f"**{title}**")
+                st.code(unresp_text, language="markdown")
+
+        with st.expander("ℹ️ 取引クローズ後の評価コメント例（レビュー欄用）"):
+            st.caption("💡 ココナラやクラウドソーシング等で自動クローズ後、相手への評価入力が必要な場合にご活用ください。")
+            for r_title, r_text in unresponsive_reviews:
+                st.markdown(f"**{r_title}**")
+                st.code(r_text, language="text")
+
+    with main_tab3:
+        st.markdown("##### ⭐ プラットフォーム評価欄用（レビュー短文・厳選パターン）")
+        st.caption("💡 ココナラ・ランサーズ等の取引完了時の評価入力欄に最適です。各カード右上の 📋 からワンクリックでコピーできます。")
+        for title, rev_text in review_patterns:
+            with st.container(border=True):
+                st.markdown(f"**{title}**")
+                st.code(rev_text, language="text")
