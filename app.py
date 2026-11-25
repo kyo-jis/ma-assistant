@@ -29,6 +29,7 @@ def format_date_jp(d: datetime.date) -> str:
 # ==========================================
 SYNC_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "sync_config.json")
 DEFAULT_SYNC_DIR = r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント"
+DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxRl4PpirIUUuhnK7SlQlx40g5wiSYi7u4Le_phPQflhhn2oWgQJS0PF3xi1S2owVOiFw/exec"
 
 def resolve_sync_dir(configured_dir: str = "") -> str:
     """
@@ -118,7 +119,7 @@ def save_sync_config(cfg: dict):
 
 def get_gas_url() -> str:
     """
-    Streamlit Secrets / 設定ファイル / セッション状態から
+    Streamlit Secrets / 設定ファイル / セッション状態 / デフォルト定数から
     Google Apps Script (GAS) Web APIのURLを取得する
     """
     try:
@@ -140,7 +141,7 @@ def get_gas_url() -> str:
     if session_url.startswith("http"):
         return session_url
 
-    return ""
+    return DEFAULT_GAS_URL
 
 def fetch_from_gas(data_type: str) -> any:
     """GAS Web APIから指定種別のデータを取得（タイムアウト6秒）"""
