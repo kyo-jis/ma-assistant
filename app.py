@@ -612,6 +612,14 @@ if "proj_memo" not in st.session_state:
 if "proj_signature_type" not in st.session_state:
     st.session_state.proj_signature_type = "なし"
 
+# 挨拶タイプ（リピート / 初回・新規）の選択肢
+GREETING_OPTIONS = [
+    "🤝 リピート・継続（いつもお世話になっております）",
+    "✨ 初回・新規（はじめまして / お問い合わせ御礼）"
+]
+if "proj_greeting_type" not in st.session_state:
+    st.session_state.proj_greeting_type = GREETING_OPTIONS[0]
+
 # 各タブ同期用キーの初期化
 for k in ["t1_client_name", "t2_client_name", "t3_client_name"]:
     if k not in st.session_state:
@@ -628,6 +636,18 @@ for k in ["t1_project_name", "t2_project_name", "t3_project_name"]:
 for k in ["t1_sig_choice", "t2_sig_choice", "t3_sig_choice", "sb_sig_choice"]:
     if k not in st.session_state:
         st.session_state[k] = st.session_state.proj_signature_type
+
+for k in ["t1_greeting_choice", "t2_greeting_choice", "t3_greeting_choice", "sb_greeting_choice"]:
+    if k not in st.session_state:
+        st.session_state[k] = st.session_state.proj_greeting_type
+
+def sync_greeting_type(source_key: str):
+    new_val = st.session_state.get(source_key, GREETING_OPTIONS[0])
+    st.session_state.proj_greeting_type = new_val
+    st.session_state.t1_greeting_choice = new_val
+    st.session_state.t2_greeting_choice = new_val
+    st.session_state.t3_greeting_choice = new_val
+    st.session_state.sb_greeting_choice = new_val
 
 def sync_signature_type(source_key: str):
     new_val = st.session_state.get(source_key, "なし")
@@ -853,6 +873,16 @@ def load_project_into_session(project: dict):
     st.session_state.t3_sig_choice = saved_sig
     st.session_state.sb_sig_choice = saved_sig
 
+    # 6. 挨拶タイプ設定の全タブ復元
+    saved_greeting = project.get("greeting_type", GREETING_OPTIONS[0])
+    if saved_greeting not in GREETING_OPTIONS:
+        saved_greeting = GREETING_OPTIONS[1] if "初回" in str(saved_greeting) else GREETING_OPTIONS[0]
+    st.session_state.proj_greeting_type = saved_greeting
+    st.session_state.t1_greeting_choice = saved_greeting
+    st.session_state.t2_greeting_choice = saved_greeting
+    st.session_state.t3_greeting_choice = saved_greeting
+    st.session_state.sb_greeting_choice = saved_greeting
+
 def reset_to_new_project():
     clear_quote_widget_keys()
 
@@ -922,6 +952,13 @@ def reset_to_new_project():
     st.session_state.t2_sig_choice = "なし"
     st.session_state.t3_sig_choice = "なし"
     st.session_state.sb_sig_choice = "なし"
+
+    # 挨拶タイプの全タブ初期化
+    st.session_state.proj_greeting_type = GREETING_OPTIONS[0]
+    st.session_state.t1_greeting_choice = GREETING_OPTIONS[0]
+    st.session_state.t2_greeting_choice = GREETING_OPTIONS[0]
+    st.session_state.t3_greeting_choice = GREETING_OPTIONS[0]
+    st.session_state.sb_greeting_choice = GREETING_OPTIONS[0]
 
 def save_current_project_data(force_as_new: bool = False, target_id: str = None) -> str:
     projects = load_projects()
@@ -1037,6 +1074,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
 
     client_honorific = st.session_state.get("proj_client_honorific", "様")
     signature_type = st.session_state.get("proj_signature_type", "なし")
+    greeting_type = st.session_state.get("proj_greeting_type", GREETING_OPTIONS[0])
     current_id = target_id or st.session_state.get("active_project_id", "new")
     if force_as_new or current_id == "new":
         new_id = f"proj_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -1046,6 +1084,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
             "client_name": client,
             "client_honorific": client_honorific,
             "signature_type": signature_type,
+            "greeting_type": greeting_type,
             "project_name": proj_title,
             "status": status,
             "memo": memo,
@@ -1067,6 +1106,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
                 p["client_name"] = client
                 p["client_honorific"] = client_honorific
                 p["signature_type"] = signature_type
+                p["greeting_type"] = greeting_type
                 p["project_name"] = proj_title
                 p["status"] = status
                 p["memo"] = memo
@@ -1084,6 +1124,7 @@ def save_current_project_data(force_as_new: bool = False, target_id: str = None)
                 "client_name": client,
                 "client_honorific": client_honorific,
                 "signature_type": signature_type,
+                "greeting_type": greeting_type,
                 "project_name": proj_title,
                 "status": status,
                 "memo": memo,
@@ -1622,6 +1663,18 @@ with st.sidebar:
         status_list,
         index=status_idx,
         key="proj_status"
+    )
+
+    cur_greet_sb = st.session_state.get("sb_greeting_choice", st.session_state.get("proj_greeting_type", GREETING_OPTIONS[0]))
+    greet_sb_idx = GREETING_OPTIONS.index(cur_greet_sb) if cur_greet_sb in GREETING_OPTIONS else 0
+    st.selectbox(
+        "🤝 お取引関係（挨拶の選択）",
+        GREETING_OPTIONS,
+        index=greet_sb_idx,
+        key="sb_greeting_choice",
+        on_change=sync_greeting_type,
+        args=("sb_greeting_choice",),
+        help="「初回・新規」を選ぶと、見積もりや制作中の挨拶が『はじめまして/お声がけ御礼』に自動で切り替わります"
     )
 
     cur_sig_p = st.session_state.get("sb_sig_choice", st.session_state.get("proj_signature_type", "なし"))
@@ -2889,8 +2942,20 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-        col_sig_t1_1, col_sig_t1_2 = st.columns([3, 2])
-        with col_sig_t1_1:
+        col_t1_opt1, col_t1_opt2 = st.columns([1, 1])
+        with col_t1_opt1:
+            cur_greet_t1 = st.session_state.get("t1_greeting_choice", st.session_state.get("proj_greeting_type", GREETING_OPTIONS[0]))
+            greet_t1_idx = GREETING_OPTIONS.index(cur_greet_t1) if cur_greet_t1 in GREETING_OPTIONS else 0
+            selected_greet_t1 = st.radio(
+                "🤝 取引関係（冒頭の挨拶文）",
+                GREETING_OPTIONS,
+                index=greet_t1_idx,
+                horizontal=True,
+                key="t1_greeting_choice",
+                on_change=sync_greeting_type,
+                args=("t1_greeting_choice",)
+            )
+        with col_t1_opt2:
             cur_sig_t1 = st.session_state.get("t1_sig_choice", st.session_state.get("proj_signature_type", "なし"))
             if cur_sig_t1 == "ココナラ・ランサーズ用":
                 cur_sig_t1 = "ココナラ用"
@@ -2904,19 +2969,17 @@ with tab1:
                 on_change=sync_signature_type,
                 args=("t1_sig_choice",)
             )
-        with col_sig_t1_2:
-            sig_prev_t1 = get_signature_text(selected_sig_t1).strip()
-            if sig_prev_t1:
-                first_line = sig_prev_t1.split("\n")[0]
-                st.caption(f"👀 署名プレビュー: **{first_line}**" + ("…" if "\n" in sig_prev_t1 else ""))
-            else:
-                st.caption("👀 署名プレビュー: （署名なし）")
 
         sig_append_t1 = get_signature_text(selected_sig_t1)
+        is_new_t1 = "初回" in selected_greet_t1
 
         # パターン1: ココナラ・クラウドソーシング特化型
-        quote_msg_coconala = f"""{client_header}いつもお世話になっております。
-ご相談いただきました{project_display}音声編集（MA）のお見積もり・スケジュール案をお送りいたします。
+        if is_new_t1:
+            greet_coconala = f"{client_header}はじめまして。この度はお声がけいただき誠にありがとうございます！\nご相談いただきました{project_display}音声編集（MA）のお見積もり・スケジュール案をご案内いたします。"
+        else:
+            greet_coconala = f"{client_header}いつもお世話になっております。\nご相談いただきました{project_display}音声編集（MA）のお見積もり・スケジュール案をお送りいたします。"
+
+        quote_msg_coconala = f"""{greet_coconala}
 
 ■ お見積り金額
 合計： {price_label}
@@ -2935,8 +2998,12 @@ with tab1:
         else:
             simple_sched_note = ""
 
-        quote_msg_simple = f"""{client_header_short}お世話になっております！
-ご相談いただきました{project_display}音声編集（MA）のお見積もりです。
+        if is_new_t1:
+            greet_simple = f"{client_header_short}はじめまして！お問い合わせいただきありがとうございます。\nご相談いただきました{project_display}音声編集（MA）のお見積もりです。"
+        else:
+            greet_simple = f"{client_header_short}お世話になっております！\nご相談いただきました{project_display}音声編集（MA）のお見積もりです。"
+
+        quote_msg_simple = f"""{greet_simple}
 
 【お見積り】
 ・内容: {simple_items_summary}
@@ -2945,8 +3012,12 @@ with tab1:
 仕様や日程のご相談も柔軟に対応可能ですので、ご確認のほどよろしくお願いいたします！""" + sig_append_t1
 
         # パターン3: ビジネスメール・詳細版
-        quote_msg_detailed = f"""{client_header}いつもお世話になっております。
-ご相談いただきました{project_display}音声編集（MA）につきまして、お見積もりと制作進行案をご案内申し上げます。
+        if is_new_t1:
+            greet_detailed = f"{client_header}初めまして。この度はお問い合わせいただき誠にありがとうございます。\nご相談いただきました{project_display}音声編集（MA）につきまして、お見積もりと制作進行案をご案内申し上げます。"
+        else:
+            greet_detailed = f"{client_header}いつもお世話になっております。\nご相談いただきました{project_display}音声編集（MA）につきまして、お見積もりと制作進行案をご案内申し上げます。"
+
+        quote_msg_detailed = f"""{greet_detailed}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 【お見積もり内容】
@@ -3099,8 +3170,20 @@ with tab2:
             key="comm_closing"
         )
 
-        col_sig_t2_1, col_sig_t2_2 = st.columns([3, 2])
-        with col_sig_t2_1:
+        col_t2_opt1, col_t2_opt2 = st.columns([1, 1])
+        with col_t2_opt1:
+            cur_greet_t2 = st.session_state.get("t2_greeting_choice", st.session_state.get("proj_greeting_type", GREETING_OPTIONS[0]))
+            greet_t2_idx = GREETING_OPTIONS.index(cur_greet_t2) if cur_greet_t2 in GREETING_OPTIONS else 0
+            comm_greet = st.radio(
+                "🤝 取引関係（冒頭の挨拶文）",
+                GREETING_OPTIONS,
+                index=greet_t2_idx,
+                horizontal=True,
+                key="t2_greeting_choice",
+                on_change=sync_greeting_type,
+                args=("t2_greeting_choice",)
+            )
+        with col_t2_opt2:
             cur_sig_t2 = st.session_state.get("t2_sig_choice", st.session_state.get("proj_signature_type", "なし"))
             if cur_sig_t2 == "ココナラ・ランサーズ用":
                 cur_sig_t2 = "ココナラ用"
@@ -3114,13 +3197,6 @@ with tab2:
                 on_change=sync_signature_type,
                 args=("t2_sig_choice",)
             )
-        with col_sig_t2_2:
-            sig_prev_t2 = get_signature_text(comm_sig).strip()
-            if sig_prev_t2:
-                first_line = sig_prev_t2.split("\n")[0]
-                st.caption(f"👀 署名プレビュー: **{first_line}**" + ("…" if "\n" in sig_prev_t2 else ""))
-            else:
-                st.caption("👀 署名プレビュー: （署名なし）")
 
     # --- メッセージ生成ロジック ---
     def generate_comm_msg(tone: str) -> str:
@@ -3150,34 +3226,63 @@ with tab2:
                 closing_text = comm_closing
 
         sig_text = get_signature_text(comm_sig)
+        is_new_t2 = "初回" in comm_greet
 
         if comm_pattern == "🎵 ファイル送付（基本・シンプル）":
-            if tone == "simple":
-                greeting = "お世話になります。"
-                lead = f"{file_label}お送りします。"
-            elif tone == "standard":
-                greeting = "いつもお世話になっております。"
-                lead = f"{proj_prefix}{file_label}をお送りいたします。"
+            if is_new_t2:
+                if tone == "simple":
+                    greeting = "初めまして！"
+                    lead = f"{file_label}お送りします。"
+                elif tone == "standard":
+                    greeting = "初めまして、この度はお声がけいただき誠にありがとうございます！"
+                    lead = f"{proj_prefix}{file_label}をお送りいたします。"
+                else:
+                    greeting = "初めまして。この度はご依頼を賜り誠にありがとうございます。"
+                    lead = f"ご依頼いただいておりました{proj_prefix}{file_label}の書き出しが完了いたしましたので、ダウンロードURLをご案内申し上げます。"
             else:
-                greeting = "いつもお世話になっております。"
-                lead = f"ご依頼いただいておりました{proj_prefix}{file_label}の書き出しが完了いたしましたので、ダウンロードURLをご案内申し上げます。"
+                if tone == "simple":
+                    greeting = "お世話になります。"
+                    lead = f"{file_label}お送りします。"
+                elif tone == "standard":
+                    greeting = "いつもお世話になっております。"
+                    lead = f"{proj_prefix}{file_label}をお送りいたします。"
+                else:
+                    greeting = "いつもお世話になっております。"
+                    lead = f"ご依頼いただいておりました{proj_prefix}{file_label}の書き出しが完了いたしましたので、ダウンロードURLをご案内申し上げます。"
 
         elif comm_pattern == "🎧 初稿・ラフミックス送付（確認依頼）":
-            if tone == "simple":
-                greeting = "お世話になります。"
-                lead = f"{proj_prefix}{file_label}（初稿）の作業が完了しましたのでお送りします。"
-                if not comment_section:
-                    comment_section = "全体の音量感やバランス等をご確認いただけますと幸いです。"
-            elif tone == "standard":
-                greeting = "いつもお世話になっております。"
-                lead = f"{proj_prefix}{file_label}（初稿）を作成いたしましたので、音源データをお送りいたします。"
-                if not comment_section:
-                    comment_section = "話者の聞き取りやすさや、BGM・効果音（SE）とのバランスを中心にご確認いただけますと幸いです。"
+            if is_new_t2:
+                if tone == "simple":
+                    greeting = "初めまして！"
+                    lead = f"{proj_prefix}{file_label}（初稿）の作業が完了しましたのでお送りします。"
+                    if not comment_section:
+                        comment_section = "全体の音量感やバランス等をご確認いただけますと幸いです。"
+                elif tone == "standard":
+                    greeting = "初めまして、この度は初めてのご依頼をいただき誠にありがとうございます！"
+                    lead = f"{proj_prefix}{file_label}（初稿）を作成いたしましたので、音源データをお送りいたします。"
+                    if not comment_section:
+                        comment_section = "話者の聞き取りやすさや、BGM・効果音（SE）とのバランスを中心にご確認いただけますと幸いです。"
+                else:
+                    greeting = "初めまして。この度は制作のご用命を賜り厚く御礼申し上げます。"
+                    lead = f"{proj_prefix}{file_label}の一次編集（初稿）作業が完了いたしましたので、共有データをお送り申し上げます。"
+                    if not comment_section:
+                        comment_section = "規定仕様および全体のバランス調整を行っております。ご視聴いただき、ご意見や調整希望がございましたらお知らせください。"
             else:
-                greeting = "いつもお世話になっております。"
-                lead = f"{proj_prefix}{file_label}の一次編集（初稿）作業が完了いたしましたので、共有データをお送り申し上げます。"
-                if not comment_section:
-                    comment_section = "規定仕様および全体のバランス調整を行っております。ご視聴いただき、ご意見や調整希望がございましたらお知らせください。"
+                if tone == "simple":
+                    greeting = "お世話になります。"
+                    lead = f"{proj_prefix}{file_label}（初稿）の作業が完了しましたのでお送りします。"
+                    if not comment_section:
+                        comment_section = "全体の音量感やバランス等をご確認いただけますと幸いです。"
+                elif tone == "standard":
+                    greeting = "いつもお世話になっております。"
+                    lead = f"{proj_prefix}{file_label}（初稿）を作成いたしましたので、音源データをお送りいたします。"
+                    if not comment_section:
+                        comment_section = "話者の聞き取りやすさや、BGM・効果音（SE）とのバランスを中心にご確認いただけますと幸いです。"
+                else:
+                    greeting = "いつもお世話になっております。"
+                    lead = f"{proj_prefix}{file_label}の一次編集（初稿）作業が完了いたしましたので、共有データをお送り申し上げます。"
+                    if not comment_section:
+                        comment_section = "規定仕様および全体のバランス調整を行っております。ご視聴いただき、ご意見や調整希望がございましたらお知らせください。"
 
         elif comm_pattern == "🔄 修正版ファイル送付（差し替え）":
             if tone == "simple":
@@ -3191,38 +3296,72 @@ with tab2:
                 lead = f"過日ご指示を賜りました修正箇所につきまして、反映および再調整を行った{file_label}をお送り申し上げます。"
 
         elif comm_pattern == "📦 最終完成データ納品（検収依頼）":
-            if tone == "simple":
-                greeting = "お世話になります。"
-                lead = f"{proj_prefix}最終完成データ（{file_label}）をお送りします。"
-                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
-                    closing_text = "問題ございませんでしたら、このまま検収・完了のお手続きへお進みいただけますと幸いです。\nどうぞよろしくお願いいたします。"
-            elif tone == "standard":
-                greeting = "いつもお世話になっております。"
-                lead = f"{proj_prefix}すべての音声編集（MA）工程が完了いたしましたので、最終納品データをお送りいたします。"
-                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
-                    closing_text = "データをご確認いただき、問題がないようでしたら完了のお手続き（検収・評価）へお進みいただけますと幸いです。\nこの度はご依頼いただき、誠にありがとうございました！"
+            if is_new_t2:
+                if tone == "simple":
+                    greeting = "初めましてのお取引ありがとうございました！"
+                    lead = f"{proj_prefix}最終完成データ（{file_label}）をお送りします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "問題ございませんでしたら、このまま検収・完了のお手続きへお進みいただけますと幸いです。\nどうぞよろしくお願いいたします。"
+                elif tone == "standard":
+                    greeting = "初めましてのお取引となりましたが、大変スムーズにご対応いただきありがとうございました！"
+                    lead = f"{proj_prefix}すべての音声編集（MA）工程が完了いたしましたので、最終納品データをお送りいたします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "データをご確認いただき、問題がないようでしたら完了のお手続き（検収・評価）へお進みいただけますと幸いです。\nこの度は初めてのご依頼をいただき、誠にありがとうございました！"
+                else:
+                    greeting = "初めましてのお取引を賜り、誠にありがとうございました。"
+                    lead = f"{proj_prefix}すべての整音およびマスタリング工程が完了いたしましたので、最終完パケデータ一式をご納品申し上げます。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "最終データをご査収いただき、問題がございませんでしたら検収のお手続きを賜りますようお願い申し上げます。\n今後とも何卒よろしくお願い申し上げます。"
             else:
-                greeting = "いつもお世話になっております。"
-                lead = f"{proj_prefix}すべての整音およびマスタリング工程が完了いたしましたので、最終完パケデータ一式をご納品申し上げます。"
-                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
-                    closing_text = "最終データをご査収いただき、問題がございませんでしたら検収のお手続きを賜りますようお願い申し上げます。\n今後とも何卒よろしくお願い申し上げます。"
+                if tone == "simple":
+                    greeting = "お世話になります。"
+                    lead = f"{proj_prefix}最終完成データ（{file_label}）をお送りします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "問題ございませんでしたら、このまま検収・完了のお手続きへお進みいただけますと幸いです。\nどうぞよろしくお願いいたします。"
+                elif tone == "standard":
+                    greeting = "いつもお世話になっております。"
+                    lead = f"{proj_prefix}すべての音声編集（MA）工程が完了いたしましたので、最終納品データをお送りいたします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "データをご確認いただき、問題がないようでしたら完了のお手続き（検収・評価）へお進みいただけますと幸いです。\nこの度はご依頼いただき、誠にありがとうございました！"
+                else:
+                    greeting = "いつもお世話になっております。"
+                    lead = f"{proj_prefix}すべての整音およびマスタリング工程が完了いたしましたので、最終完パケデータ一式をご納品申し上げます。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "最終データをご査収いただき、問題がございませんでしたら検収のお手続きを賜りますようお願い申し上げます。\n今後とも何卒よろしくお願い申し上げます。"
 
         elif comm_pattern == "📥 素材受領・作業着手のご連絡":
-            if tone == "simple":
-                greeting = "お世話になります。"
-                lead = f"素材データ（{file_label}）を無事受領いたしました。ご手配ありがとうございます。\nこれより作業に着手いたします。"
-                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
-                    closing_text = "初稿の仕上がりまで今しばらくお待ちください。よろしくお願いいたします。"
-            elif tone == "standard":
-                greeting = "いつもお世話になっております。"
-                lead = f"{proj_prefix}作業素材一式を無事に受領・確認いたしました。迅速なご手配をいただき誠にありがとうございます。\nこれより音声編集（MA）作業に着手させていただきます。"
-                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
-                    closing_text = "予定スケジュールに沿って丁寧に進めてまいります。初稿のお届けまで今しばらくお待ちくださいませ。\n引き続きよろしくお願いいたします。"
+            if is_new_t2:
+                if tone == "simple":
+                    greeting = "初めまして！"
+                    lead = f"素材データ（{file_label}）を無事受領いたしました。ご手配ありがとうございます。\nこれより作業に着手いたします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "初稿の仕上がりまで今しばらくお待ちください。よろしくお願いいたします。"
+                elif tone == "standard":
+                    greeting = "初めまして、この度はご依頼いただき誠にありがとうございます！"
+                    lead = f"{proj_prefix}作業素材一式を無事に受領・確認いたしました。迅速なご手配をいただき心より感謝申し上げます。\nこれより音声編集（MA）作業に着手させていただきます。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "予定スケジュールに沿って丁寧に進めてまいります。初稿のお届けまで今しばらくお待ちくださいませ。\n引き続きよろしくお願いいたします。"
+                else:
+                    greeting = "初めまして。この度はご依頼を賜り誠にありがとうございます。"
+                    lead = f"ご手配いただきました{proj_prefix}制作素材一式を確かに受領いたしました。迅速にご対応いただき厚く御礼申し上げます。\nこれより規定仕様に準拠した整音・ミックス作業を開始いたします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "予定納期に向けて進捗を進めてまいりますので、何卒よろしくお願い申し上げます。"
             else:
-                greeting = "いつもお世話になっております。"
-                lead = f"ご手配いただきました{proj_prefix}制作素材一式を確かに受領いたしました。迅速にご対応いただき厚く御礼申し上げます。\nこれより規定仕様に準拠した整音・ミックス作業を開始いたします。"
-                if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
-                    closing_text = "予定納期に向けて進捗を進めてまいりますので、何卒よろしくお願い申し上げます。"
+                if tone == "simple":
+                    greeting = "お世話になります。"
+                    lead = f"素材データ（{file_label}）を無事受領いたしました。ご手配ありがとうございます。\nこれより作業に着手いたします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "初稿の仕上がりまで今しばらくお待ちください。よろしくお願いいたします。"
+                elif tone == "standard":
+                    greeting = "いつもお世話になっております。"
+                    lead = f"{proj_prefix}作業素材一式を無事に受領・確認いたしました。迅速なご手配をいただき誠にありがとうございます。\nこれより音声編集（MA）作業に着手させていただきます。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "予定スケジュールに沿って丁寧に進めてまいります。初稿のお届けまで今しばらくお待ちくださいませ。\n引き続きよろしくお願いいたします。"
+                else:
+                    greeting = "いつもお世話になっております。"
+                    lead = f"ご手配いただきました{proj_prefix}制作素材一式を確かに受領いたしました。迅速にご対応いただき厚く御礼申し上げます。\nこれより規定仕様に準拠した整音・ミックス作業を開始いたします。"
+                    if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
+                        closing_text = "予定納期に向けて進捗を進めてまいりますので、何卒よろしくお願い申し上げます。"
 
         elif comm_pattern == "⏳ 連絡途絶時の確認・正式納品（クローズ案内）":
             if tone == "simple":
@@ -3231,18 +3370,21 @@ with tab2:
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "納品データをご確認いただき、何かございましたらメッセージにてお気軽にご連絡ください。\nどうぞよろしくお願いいたします。"
             elif tone == "standard":
-                greeting = "いつもお世話になっております。"
+                greeting = "お世話になっております。" if is_new_t2 else "いつもお世話になっております。"
                 lead = f"大変恐縮ですが、{proj_prefix}一定期間ご連絡がストップしておりますため、進行の都合上、本メッセージをもちまして一旦「正式な納品」とさせていただきます。"
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "なお、納品データをご確認いただき、万が一修正や微調整のご要望などがございましたら、お取引完了後でも責任を持って対応させていただきますのでご安心ください。\nこの度はご依頼いただき誠にありがとうございました。"
             else:
-                greeting = "いつもお世話になっております。"
+                greeting = "お世話になっております。" if is_new_t2 else "いつもお世話になっております。"
                 lead = f"{proj_prefix}作業完了データのご案内後、一定期間ご返信をいただけておりませんため、制作進行およびシステム規定の都合上、誠に恐縮ながら本メッセージをもちまして「正式な納品」の手続きとさせていただきます。"
                 if comm_closing == "ご確認よろしくお願いいたします。気になる点ございましたらご連絡ください。":
                     closing_text = "仕上がりデータをご確認いただき、不都合な点や追加のご要望などがございましたら、クローズ後でも何なりとお申し付けください。\nこれまでのお取引に心より感謝申し上げます。何卒よろしくお願い申し上げます。"
 
         else:  # 💬 自由作成（カスタム）
-            greeting = "お世話になります。" if tone == "simple" else ("いつもお世話になっております。" if tone == "standard" else "いつもお世話になっております。")
+            if is_new_t2:
+                greeting = "初めまして！" if tone == "simple" else ("初めまして、この度はお声がけいただき誠にありがとうございます。" if tone == "standard" else "初めまして。この度はお問い合わせいただき誠にありがとうございます。")
+            else:
+                greeting = "お世話になります。" if tone == "simple" else ("いつもお世話になっております。" if tone == "standard" else "いつもお世話になっております。")
             lead = ""
 
         # 各ブロックの結合
@@ -3352,27 +3494,20 @@ with tab3:
                 args=("t3_project_name",)
             )
 
-        col_t3_s1, col_t3_s2, col_t3_s3 = st.columns([2.5, 2.2, 3.3])
-        with col_t3_s1:
-            impression_options = ["とてもスムーズ", "普通", "少し時間がかかった", "連絡途絶（返信なし・音信不通）"]
-            cur_imp = st.session_state.get("eval_impression", "とてもスムーズ")
-            imp_idx = impression_options.index(cur_imp) if cur_imp in impression_options else 0
-            impression = st.selectbox(
-                "やり取りの印象",
-                impression_options,
-                index=imp_idx,
-                help="相手の対応スピードややり取りの円滑さに合わせてコメントのトーンを自動調整します。",
-                key="eval_impression"
+        col_t3_opt1, col_t3_opt2 = st.columns([1, 1])
+        with col_t3_opt1:
+            cur_greet_t3 = st.session_state.get("t3_greeting_choice", st.session_state.get("proj_greeting_type", GREETING_OPTIONS[0]))
+            greet_t3_idx = GREETING_OPTIONS.index(cur_greet_t3) if cur_greet_t3 in GREETING_OPTIONS else 0
+            eval_greet = st.radio(
+                "🤝 取引関係（冒頭の挨拶文）",
+                GREETING_OPTIONS,
+                index=greet_t3_idx,
+                horizontal=True,
+                key="t3_greeting_choice",
+                on_change=sync_greeting_type,
+                args=("t3_greeting_choice",)
             )
-        with col_t3_s2:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            appeal_flag = st.checkbox(
-                "次回へのアピールを含める",
-                value=st.session_state.get("eval_appeal_flag", True),
-                help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。",
-                key="eval_appeal_flag"
-            )
-        with col_t3_s3:
+        with col_t3_opt2:
             cur_sig_t3 = st.session_state.get("t3_sig_choice", st.session_state.get("proj_signature_type", "なし"))
             if cur_sig_t3 == "ココナラ・ランサーズ用":
                 cur_sig_t3 = "ココナラ用"
@@ -3386,18 +3521,34 @@ with tab3:
                 on_change=sync_signature_type,
                 args=("t3_sig_choice",)
             )
-            sig_prev_t3 = get_signature_text(eval_sig).strip()
-            if sig_prev_t3:
-                first_line = sig_prev_t3.split("\n")[0]
-                st.caption(f"👀 署名: **{first_line}**" + ("…" if "\n" in sig_prev_t3 else ""))
-            else:
-                st.caption("👀 署名: （署名なし）")
+
+        col_t3_imp1, col_t3_imp2 = st.columns([2, 1])
+        with col_t3_imp1:
+            impression_options = ["とてもスムーズ", "普通", "少し時間がかかった", "連絡途絶（返信なし・音信不通）"]
+            cur_imp = st.session_state.get("eval_impression", "とてもスムーズ")
+            imp_idx = impression_options.index(cur_imp) if cur_imp in impression_options else 0
+            impression = st.selectbox(
+                "やり取りの印象",
+                impression_options,
+                index=imp_idx,
+                help="相手の対応スピードややり取りの円滑さに合わせてコメントのトーンを自動調整します。",
+                key="eval_impression"
+            )
+        with col_t3_imp2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            appeal_flag = st.checkbox(
+                "次回へのアピールを含める",
+                value=st.session_state.get("eval_appeal_flag", True),
+                help="チェックを入れると「また音声編集でお困りならお声がけください」といった一文を末尾に追加します。",
+                key="eval_appeal_flag"
+            )
 
     # --- 評価・納品コメント生成ロジック ---
     c_eval_disp = format_client_display(eval_client_name, eval_client_honorific)
     eval_hdr = f"{c_eval_disp}\n\n" if c_eval_disp else ""
     eval_hdr_short = f"{c_eval_disp}\n" if c_eval_disp else ""
     target_project = f"「{eval_project_name.strip()}」の" if eval_project_name.strip() else ""
+    is_new_t3 = "初回" in eval_greet
 
     # アピール文（トーン別）
     appeal_short = " また音声編集でお困りの際は気軽にお声がけください！" if appeal_flag else ""
@@ -3409,39 +3560,75 @@ with tab3:
 
     # 1. 評価コメント（レビュー短文集：ココナラ・ランサーズ等の相手評価欄用）
     if impression == "とてもスムーズ":
-        review_patterns = [
-            (
-                "① 定番・迅速丁寧（最もおすすめ）",
-                f"迅速かつ丁寧にご対応いただき、終始安心してお取引を進めることができました。素晴らしいご縁に心より感謝申し上げます。{appeal_review}今後ともよろしくお願いいたします。"
-            ),
-            (
-                "② 最短・1行シンプル（サクッと完了）",
-                f"スムーズで気持ちの良いお取引をありがとうございました！また機会がございましたらよろしくお願いいたします。"
-            ),
-            (
-                "③ 的確なご指示・レスポンス称賛",
-                f"的確なご指示と素早いレスポンスをいただき、大変スムーズに進行できました。{appeal_review}またよろしくお願いいたします。"
-            ),
-            (
-                "④ リピート・継続案件向け",
-                f"今回も迅速・丁寧にご対応いただき誠にありがとうございました！今後ともどうぞよろしくお願いいたします。"
-            )
-        ]
+        if is_new_t3:
+            review_patterns = [
+                (
+                    "① 定番・初取引感謝（最もおすすめ）",
+                    f"この度は初めてのご依頼をいただき誠にありがとうございました！ご指示や素材のご手配が非常に的確で、終始安心してお取引を進めることができました。{appeal_review}今後ともよろしくお願いいたします。"
+                ),
+                (
+                    "② 最短・1行シンプル（初取引）",
+                    f"初めてのお取引でしたが、スムーズで気持ちの良いやり取りをありがとうございました！また機会がございましたらよろしくお願いいたします。"
+                ),
+                (
+                    "③ 迅速なレスポンス称賛（初取引）",
+                    f"迅速かつ丁寧にご対応いただき、初めてのご依頼ながら大変スムーズに進行できました。{appeal_review}またいつでもお気軽にお声がけください。"
+                ),
+                (
+                    "④ 丁寧なやり取り感謝",
+                    f"終始とても丁寧にご対応いただき、安心してお取引をさせていただきました。またのご縁を心よりお待ちしております！"
+                )
+            ]
+        else:
+            review_patterns = [
+                (
+                    "① 定番・迅速丁寧（最もおすすめ）",
+                    f"迅速かつ丁寧にご対応いただき、終始安心してお取引を進めることができました。素晴らしいご縁に心より感謝申し上げます。{appeal_review}今後ともよろしくお願いいたします。"
+                ),
+                (
+                    "② 最短・1行シンプル（サクッと完了）",
+                    f"スムーズで気持ちの良いお取引をありがとうございました！また機会がございましたらよろしくお願いいたします。"
+                ),
+                (
+                    "③ 的確なご指示・レスポンス称賛",
+                    f"的確なご指示と素早いレスポンスをいただき、大変スムーズに進行できました。{appeal_review}またよろしくお願いいたします。"
+                ),
+                (
+                    "④ リピート・継続案件向け",
+                    f"今回も迅速・丁寧にご対応いただき誠にありがとうございました！今後ともどうぞよろしくお願いいたします。"
+                )
+            ]
     elif impression == "普通":
-        review_patterns = [
-            (
-                "① 定番・丁寧感謝（バランス重視）",
-                f"終始丁寧にご対応いただき、無事にお取引を完了することができました。ご依頼いただき誠にありがとうございました。{appeal_review}"
-            ),
-            (
-                "② 最短・1行シンプル",
-                f"ご丁寧なお取引をありがとうございました。また機会がございましたらよろしくお願いいたします。"
-            ),
-            (
-                "③ スムーズ完了",
-                f"迅速にご確認いただき、滞りなく納品まで進めることができました。またのご縁を心よりお待ちしております。"
-            )
-        ]
+        if is_new_t3:
+            review_patterns = [
+                (
+                    "① 定番・丁寧感謝（初取引）",
+                    f"この度は初めてのご依頼をいただきありがとうございました。終始丁寧にご対応いただき、無事にお取引を完了することができました。{appeal_review}"
+                ),
+                (
+                    "② 最短・1行シンプル",
+                    f"ご丁寧なお取引をありがとうございました。また機会がございましたらよろしくお願いいたします。"
+                ),
+                (
+                    "③ スムーズ完了",
+                    f"迅速にご確認いただき、滞りなく納品まで進めることができました。またのご縁を心よりお待ちしております。"
+                )
+            ]
+        else:
+            review_patterns = [
+                (
+                    "① 定番・丁寧感謝（バランス重視）",
+                    f"終始丁寧にご対応いただき、無事にお取引を完了することができました。ご依頼いただき誠にありがとうございました。{appeal_review}"
+                ),
+                (
+                    "② 最短・1行シンプル",
+                    f"ご丁寧なお取引をありがとうございました。また機会がございましたらよろしくお願いいたします。"
+                ),
+                (
+                    "③ スムーズ完了",
+                    f"迅速にご確認いただき、滞りなく納品まで進めることができました。またのご縁を心よりお待ちしております。"
+                )
+            ]
     elif impression == "連絡途絶（返信なし・音信不通）":
         review_patterns = [
             (
@@ -3481,19 +3668,37 @@ with tab3:
     else:
         q_thanks = "ご調整いただき誠にありがとうございました。"
 
-    q_msg1 = f"""{eval_hdr_short}お世話になっております。{target_project}音声編集（MA）の納品データをお送りいたします。
+    if is_new_t3:
+        q_msg1 = f"""{eval_hdr_short}初めましてのお取引ありがとうございました！{target_project}音声編集（MA）の納品データをお送りいたします。
 ご確認のほどよろしくお願いいたします。{appeal_short}""" + sig_eval_append
 
-    q_msg2 = f"""{eval_hdr_short}お世話になっております！
+        q_msg2 = f"""{eval_hdr_short}この度は初めてのご依頼をいただきありがとうございました！
 {target_project}作業が完了いたしましたので、納品データをお送りいたします。
 
 {q_thanks}ご確認よろしくお願いいたします。{appeal_short}""" + sig_eval_append
 
-    q_msg3 = f"""{eval_hdr_short}お世話になっております。{target_project}音声編集データを納品いたします。
+        q_msg3 = f"""{eval_hdr_short}初めましてのお取引ありがとうございました。{target_project}音声編集データを納品いたします。
 
 仕上がりに気になる点や微調整のご希望などがございましたら、お気軽にお申し付けください。{appeal_short}""" + sig_eval_append
 
-    q_msg4 = f"""{eval_hdr_short}お世話になっております。{target_project}納品データをご用意いたしました。
+        q_msg4 = f"""{eval_hdr_short}この度はご依頼いただきありがとうございました。{target_project}納品データをご用意いたしました。
+添付ファイル（または送付URL）よりダウンロードの上、ご確認いただけますと幸いです。
+
+問題ございませんでしたら、検収・正式納品のお手続きへお進みください。{appeal_short}""" + sig_eval_append
+    else:
+        q_msg1 = f"""{eval_hdr_short}お世話になっております。{target_project}音声編集（MA）の納品データをお送りいたします。
+ご確認のほどよろしくお願いいたします。{appeal_short}""" + sig_eval_append
+
+        q_msg2 = f"""{eval_hdr_short}お世話になっております！
+{target_project}作業が完了いたしましたので、納品データをお送りいたします。
+
+{q_thanks}ご確認よろしくお願いいたします。{appeal_short}""" + sig_eval_append
+
+        q_msg3 = f"""{eval_hdr_short}お世話になっております。{target_project}音声編集データを納品いたします。
+
+仕上がりに気になる点や微調整のご希望などがございましたら、お気軽にお申し付けください。{appeal_short}""" + sig_eval_append
+
+        q_msg4 = f"""{eval_hdr_short}お世話になっております。{target_project}納品データをご用意いたしました。
 添付ファイル（または送付URL）よりダウンロードの上、ご確認いただけますと幸いです。
 
 問題ございませんでしたら、検収・正式納品のお手続きへお進みください。{appeal_short}""" + sig_eval_append
@@ -3506,7 +3711,8 @@ with tab3:
     ]
 
     # 3. 連絡途絶・返信ストップ時の正式納品メッセージ（3パターン）
-    unresp_p1 = f"""{eval_hdr}いつもお世話になっております。
+    unresp_greeting = "お世話になっております。" if is_new_t3 else "いつもお世話になっております。"
+    unresp_p1 = f"""{eval_hdr}{unresp_greeting}
 大変恐縮ですが、一定期間ご連絡がストップしておりますため、進行の都合上、本メッセージをもちまして一旦「正式な納品」とさせていただきます。
 
 なお、納品データをご確認いただき、万が一修正や微調整のご要望などがございましたら、お取引完了後でもメッセージにて対応させていただきますのでご安心ください。
@@ -3514,7 +3720,7 @@ with tab3:
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 またの機会がございましたら、よろしくお願い申し上げます。""" + sig_eval_append
 
-    unresp_p2 = f"""{eval_hdr}いつもお世話になっております。
+    unresp_p2 = f"""{eval_hdr}{unresp_greeting}
 {target_project}作業完了データをお送りした後、一定期間ご返信をいただけておりませんため、制作進行およびシステム上の規定に伴い、誠に勝手ながら本メッセージをもちまして「正式な納品」の手続きとさせていただきます。
 
 データをご確認いただき、気になる点や追加のご要望などがございましたら、クローズ後でもメッセージ等よりお気軽にお知らせください。
@@ -3544,7 +3750,25 @@ with tab3:
 
     # 4. 納品メッセージ（標準版 & フォーマル版）
     if impression == "とてもスムーズ":
-        msg_standard = f"""{eval_hdr}いつもお世話になっております。
+        if is_new_t3:
+            msg_standard = f"""{eval_hdr}初めましてのお取引となりましたが、この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました！
+
+ご指示や素材のご手配が非常に的確で、メッセージのレスポンスも迅速にしていただいたおかげで、初めてのお取引ながら終始大変安心・スムーズに作業を進行することができました。心より感謝申し上げます。
+
+納品データについて気になる点や微調整などがございましたら、いつでもお気軽にご連絡ください。{appeal_standard}
+
+また音声編集でお役に立てることがございましたら、いつでもお気軽にお声がけいただけますと幸いです。
+今後ともどうぞよろしくお願いいたします。""" + sig_eval_append
+
+            msg_formal = f"""{eval_hdr}初めまして。この度は、{target_project}音声編集（MA）業務のご依頼を賜り、誠にありがとうございました。
+
+ご指示や素材のご手配を迅速にいただき、円滑に作業を進行することができましたこと、深く感謝申し上げます。
+納品データを添付いたしましたので、ご査収のほどよろしくお願い申し上げます。
+修正や追加のご要望がございましたら、迅速に対応いたしますので何なりとお申し付けください。{appeal_formal}
+
+今後とも何卒よろしくお願い申し上げます。""" + sig_eval_append
+        else:
+            msg_standard = f"""{eval_hdr}いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました！
 
 ご指示や素材のご手配が非常に的確で、メッセージのレスポンスも迅速にしていただいたおかげで、終始大変スムーズに作業を進行することができました。心より感謝申し上げます。
@@ -3553,7 +3777,7 @@ with tab3:
 
 今後ともどうぞよろしくお願いいたします。""" + sig_eval_append
 
-        msg_formal = f"""{eval_hdr}いつもお世話になっております。
+            msg_formal = f"""{eval_hdr}いつもお世話になっております。
 この度は、{target_project}音声編集（MA）業務のご依頼を賜り、誠にありがとうございました。
 
 ご指示や素材のご手配を迅速にいただき、円滑に作業を進行することができましたこと、深く感謝申し上げます。
@@ -3563,7 +3787,24 @@ with tab3:
 今後とも何卒よろしくお願い申し上げます。""" + sig_eval_append
 
     elif impression == "普通":
-        msg_standard = f"""{eval_hdr}いつもお世話になっております。
+        if is_new_t3:
+            msg_standard = f"""{eval_hdr}初めましてのお取引となりましたが、この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
+
+ご丁寧にご対応いただき、無事に納品完了まで進めることができました。
+今回の仕上がりが今後の制作のお役に立てておりましたら幸いです。
+
+納品データのご確認で何かございましたら、お申し付けください。{appeal_standard}
+
+また機会がございましたら、どうぞよろしくお願い申し上げます。""" + sig_eval_append
+
+            msg_formal = f"""{eval_hdr}初めまして。この度は、{target_project}音声編集（MA）業務のご依頼を賜り、心より御礼申し上げます。
+
+ご丁寧なご連携をいただき、無事に納品工程を完了することができました。
+仕上がりデータをご確認いただき、不都合な点などがございましたらご連絡いただけますと幸いです。{appeal_formal}
+
+今後ともご愛顧のほど、よろしくお願い申し上げます。""" + sig_eval_append
+        else:
+            msg_standard = f"""{eval_hdr}いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
 ご丁寧にご対応いただき、無事に納品完了まで進めることができました。
@@ -3573,7 +3814,7 @@ with tab3:
 
 また機会がございましたら、どうぞよろしくお願い申し上げます。""" + sig_eval_append
 
-        msg_formal = f"""{eval_hdr}いつもお世話になっております。
+            msg_formal = f"""{eval_hdr}いつもお世話になっております。
 この度は、{target_project}音声編集（MA）業務のご依頼を賜り、心より御礼申し上げます。
 
 ご丁寧なご連携をいただき、無事に納品工程を完了することができました。
@@ -3596,7 +3837,26 @@ with tab3:
 敬具""" + sig_eval_append
 
     else:  # 少し時間がかかった
-        msg_standard = f"""{eval_hdr}いつもお世話になっております。
+        if is_new_t3:
+            msg_standard = f"""{eval_hdr}初めましてのお取引となりましたが、この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
+
+追加のご調整やご確認などを経て、無事に納品完了まで進めることができ安心いたしました。最後まで丁寧にお付き合いいただき、誠にありがとうございました。
+
+今回の音声データがお役に立ちましたら幸いでございます。{appeal_standard}
+
+またの機会がございましたら、よろしくお願い申し上げます。""" + sig_eval_append
+
+            msg_formal = f"""{eval_hdr}拝啓
+貴社におかれましては、ますますご清栄のこととお慶び申し上げます。
+この度は{target_project}音声編集（MA）のご依頼を賜り、誠にありがとうございました。
+
+仕様の確認および追加調整にお時間を頂戴いたしましたが、無事に納品データを仕上げることができ安心いたしました。最後まで丁寧にお付き合いいただき厚く御礼申し上げます。
+添付データのご確認をよろしくお願い申し上げます。{appeal_formal}
+
+またの機会がございましたら、何卒よろしくお願い申し上げます。
+敬具""" + sig_eval_append
+        else:
+            msg_standard = f"""{eval_hdr}いつもお世話になっております。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
 追加のご調整やご確認などを経て、無事に納品完了まで進めることができ安心いたしました。最後まで丁寧にお付き合いいただき、誠にありがとうございました。
@@ -3605,7 +3865,7 @@ with tab3:
 
 またの機会がございましたら、よろしくお願い申し上げます。""" + sig_eval_append
 
-        msg_formal = f"""{eval_hdr}拝啓
+            msg_formal = f"""{eval_hdr}拝啓
 貴社におかれましては、ますますご清栄のこととお慶び申し上げます。
 この度は{target_project}音声編集（MA）のご依頼をいただき、誠にありがとうございました。
 
