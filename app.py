@@ -24,6 +24,155 @@ def format_date_jp(d: datetime.date) -> str:
     return f"{d.month}/{d.day}（{weekday}）"
 
 # ==========================================
+# Google ドライブ / 外部フォルダ自動同期設定・処理
+# ==========================================
+SYNC_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "sync_config.json")
+DEFAULT_SYNC_DIR = r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント"
+
+def resolve_sync_dir(configured_dir: str = "") -> str:
+    """
+    Windows / Mac のGoogleドライブフォルダを自動探索・解決する
+    """
+    # 1. ユーザー手動設定のパスが存在すれば最優先
+    if configured_dir and os.path.exists(configured_dir):
+        return configured_dir
+
+    # 2. Windows 標準の G:\マイドライブ
+    win_default = r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント"
+    if os.path.exists(win_default):
+        return win_default
+
+    # 3. Windows の他ドライブレター (D〜Z)
+    for d in ["D", "E", "F", "H", "I", "J", "K"]:
+        cand = f"{d}:\\マイドライブ\\KO SUTUDIO_仕事用\\見積もりアシスタント"
+        if os.path.exists(cand):
+            return cand
+
+    user_home = os.path.expanduser("~")
+    # 4. Windows ユーザーフォルダ配下のGoogle Drive
+    for sub in ["Google Drive", "Google ドライブ"]:
+        cand_win_user = os.path.join(user_home, sub, "KO SUTUDIO_仕事用", "見積もりアシスタント")
+        if os.path.exists(cand_win_user):
+            return cand_win_user
+
+    # 5. Mac: ~/Library/CloudStorage/GoogleDrive-* 配下の自動探索
+    cloud_storage = os.path.join(user_home, "Library", "CloudStorage")
+    if os.path.exists(cloud_storage):
+        try:
+            for entry in os.listdir(cloud_storage):
+                if entry.startswith("GoogleDrive-") or "Google" in entry:
+                    for sub in ["マイドライブ", "My Drive", "共有ドライブ"]:
+                        mac_path = os.path.join(cloud_storage, entry, sub, "KO SUTUDIO_仕事用", "見積もりアシスタント")
+                        if os.path.exists(mac_path):
+                            return mac_path
+                        # 親フォルダ KO SUTUDIO_仕事用 があれば自動作成
+                        parent = os.path.join(cloud_storage, entry, sub, "KO SUTUDIO_仕事用")
+                        if os.path.exists(parent):
+                            os.makedirs(mac_path, exist_ok=True)
+                            return mac_path
+        except Exception:
+            pass
+
+    # 6. Mac: /Volumes/GoogleDrive 配下の自動探索
+    vol_gd = "/Volumes/GoogleDrive"
+    if os.path.exists(vol_gd):
+        for sub in ["マイドライブ", "My Drive"]:
+            vol_path = os.path.join(vol_gd, sub, "KO SUTUDIO_仕事用", "見積もりアシスタント")
+            if os.path.exists(vol_path):
+                return vol_path
+
+    # 7. Mac ユーザーディレクトリ直下 Google Drive
+    for sub in ["Google Drive", "Google ドライブ"]:
+        mac_home_gd = os.path.join(user_home, sub, "KO SUTUDIO_仕事用", "見積もりアシスタント")
+        if os.path.exists(mac_home_gd):
+            return mac_home_gd
+
+    return ""
+
+def load_sync_config() -> dict:
+    default_cfg = {
+        "sync_dir": DEFAULT_SYNC_DIR,
+        "auto_sync": True
+    }
+    if not os.path.exists(SYNC_CONFIG_FILE):
+        return default_cfg
+    try:
+        with open(SYNC_CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else default_cfg
+    except Exception:
+        return default_cfg
+
+def save_sync_config(cfg: dict):
+    try:
+        with open(SYNC_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def get_active_sync_dir() -> str:
+    cfg = load_sync_config()
+    conf_dir = cfg.get("sync_dir", "").strip()
+    return resolve_sync_dir(conf_dir)
+
+def get_or_restore_cloud_projects_file(sync_dir: str) -> str:
+    cloud_file = os.path.join(sync_dir, "projects_data.json")
+    if os.path.exists(cloud_file):
+        return cloud_file
+    try:
+        candidates = []
+        for f in os.listdir(sync_dir):
+            if (f.startswith("backup_projects_") or f.startswith("ma_assistant_projects_")) and f.endswith(".json"):
+                candidates.append(f)
+        if candidates:
+            candidates.sort(reverse=True)
+            latest_backup = os.path.join(sync_dir, candidates[0])
+            shutil.copy2(latest_backup, cloud_file)
+            return cloud_file
+    except Exception:
+        pass
+    return cloud_file
+
+def sync_backup_to_dir(target_dir: str) -> tuple[bool, str]:
+    if not target_dir or not os.path.exists(target_dir):
+        return False, "指定された同期先フォルダが見つかりません。"
+    try:
+        if os.path.exists(PROJECTS_FILE):
+            dest_proj = os.path.join(target_dir, "projects_data.json")
+            shutil.copy2(PROJECTS_FILE, dest_proj)
+        if os.path.exists(SIGNATURES_FILE):
+            dest_sig = os.path.join(target_dir, "signatures_data.json")
+            shutil.copy2(SIGNATURES_FILE, dest_sig)
+        if os.path.exists(PROGRAMS_FILE):
+            dest_prog = os.path.join(target_dir, "custom_programs.json")
+            shutil.copy2(PROGRAMS_FILE, dest_prog)
+        today_str = datetime.date.today().strftime("%Y%m%d")
+        dest_dated = os.path.join(target_dir, f"backup_projects_{today_str}.json")
+        if os.path.exists(PROJECTS_FILE):
+            shutil.copy2(PROJECTS_FILE, dest_dated)
+        return True, "Googleドライブと同期完了しました！"
+    except Exception as e:
+        return False, f"同期エラー: {e}"
+
+def restore_from_sync_dir(target_dir: str) -> tuple[bool, str]:
+    if not target_dir or not os.path.exists(target_dir):
+        return False, "指定された同期先フォルダが見つかりません。"
+    src_proj = get_or_restore_cloud_projects_file(target_dir)
+    if not os.path.exists(src_proj):
+        return False, "同期先に案件データが見つかりません。"
+    try:
+        shutil.copy2(src_proj, PROJECTS_FILE)
+        src_sig = os.path.join(target_dir, "signatures_data.json")
+        if os.path.exists(src_sig):
+            shutil.copy2(src_sig, SIGNATURES_FILE)
+        src_prog = os.path.join(target_dir, "custom_programs.json")
+        if os.path.exists(src_prog):
+            shutil.copy2(src_prog, PROGRAMS_FILE)
+        return True, "Googleドライブのデータから最新状態に復元しました！"
+    except Exception as e:
+        return False, f"復元エラー: {e}"
+
+# ==========================================
 # 固定単価番組（マスタデータ）の読み書き
 # ==========================================
 PROGRAMS_FILE = os.path.join(os.path.dirname(__file__), "custom_programs.json")
@@ -32,6 +181,14 @@ def load_custom_programs() -> list[dict]:
     default_programs = [
         {"name": "中島知子のおんせんさんぽ", "price": 3000}
     ]
+    sync_dir = get_active_sync_dir()
+    cloud_prog = os.path.join(sync_dir, "custom_programs.json") if sync_dir else ""
+    if cloud_prog and os.path.exists(cloud_prog) and not os.path.exists(PROGRAMS_FILE):
+        try:
+            shutil.copy2(cloud_prog, PROGRAMS_FILE)
+        except Exception:
+            pass
+
     if not os.path.exists(PROGRAMS_FILE):
         try:
             with open(PROGRAMS_FILE, "w", encoding="utf-8") as f:
@@ -54,6 +211,14 @@ def save_custom_programs(programs: list[dict]):
             json.dump(programs, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"番組データの保存に失敗しました: {e}")
+    sync_dir = get_active_sync_dir()
+    if sync_dir:
+        try:
+            cloud_prog = os.path.join(sync_dir, "custom_programs.json")
+            with open(cloud_prog, "w", encoding="utf-8") as f:
+                json.dump(programs, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
 # ==========================================
 # 署名データ（本名 / ココナラ / ランサーズ）の読み書き
@@ -67,6 +232,14 @@ def load_signatures() -> dict:
         "lancers": "MAクリエイター（ランサーズ）",
         "realname": "山田 太郎\n音声編集・MAミキサー\nMail: info@example.com"
     }
+    sync_dir = get_active_sync_dir()
+    cloud_sig = os.path.join(sync_dir, "signatures_data.json") if sync_dir else ""
+    if cloud_sig and os.path.exists(cloud_sig) and not os.path.exists(SIGNATURES_FILE):
+        try:
+            shutil.copy2(cloud_sig, SIGNATURES_FILE)
+        except Exception:
+            pass
+
     if not os.path.exists(SIGNATURES_FILE):
         try:
             with open(SIGNATURES_FILE, "w", encoding="utf-8") as f:
@@ -91,6 +264,14 @@ def save_signatures(sig_data: dict):
             json.dump(sig_data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"署名データの保存に失敗しました: {e}")
+    sync_dir = get_active_sync_dir()
+    if sync_dir:
+        try:
+            cloud_sig = os.path.join(sync_dir, "signatures_data.json")
+            with open(cloud_sig, "w", encoding="utf-8") as f:
+                json.dump(sig_data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
 def get_signature_text(sig_type: str) -> str:
     if not sig_type or sig_type == "なし":
@@ -109,75 +290,85 @@ def get_signature_text(sig_type: str) -> str:
     return f"\n\n{sig_body}"
 
 # ==========================================
-# Google ドライブ / 外部フォルダ同期設定・処理
-# ==========================================
-SYNC_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "sync_config.json")
-DEFAULT_SYNC_DIR = r"G:\マイドライブ\KO SUTUDIO_仕事用\見積もりアシスタント"
-
-def load_sync_config() -> dict:
-    default_cfg = {
-        "sync_dir": DEFAULT_SYNC_DIR,
-        "auto_sync": True
-    }
-    if not os.path.exists(SYNC_CONFIG_FILE):
-        return default_cfg
-    try:
-        with open(SYNC_CONFIG_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else default_cfg
-    except Exception:
-        return default_cfg
-
-def save_sync_config(cfg: dict):
-    try:
-        with open(SYNC_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-def sync_backup_to_dir(target_dir: str) -> tuple[bool, str]:
-    if not target_dir or not os.path.exists(target_dir):
-        return False, "指定された同期先フォルダが見つかりません。"
-    try:
-        # projects_data.json のコピー
-        if os.path.exists(PROJECTS_FILE):
-            dest_proj = os.path.join(target_dir, "projects_data.json")
-            shutil.copy2(PROJECTS_FILE, dest_proj)
-        # signatures_data.json のコピー
-        if os.path.exists(SIGNATURES_FILE):
-            dest_sig = os.path.join(target_dir, "signatures_data.json")
-            shutil.copy2(SIGNATURES_FILE, dest_sig)
-        # 日付入りバックアップも保存（履歴用）
-        today_str = datetime.date.today().strftime("%Y%m%d")
-        dest_dated = os.path.join(target_dir, f"backup_projects_{today_str}.json")
-        if os.path.exists(PROJECTS_FILE):
-            shutil.copy2(PROJECTS_FILE, dest_dated)
-        return True, f"Googleドライブにバックアップを保存しました！（{os.path.basename(dest_proj)}）"
-    except Exception as e:
-        return False, f"同期エラー: {e}"
-
-def restore_from_sync_dir(target_dir: str) -> tuple[bool, str]:
-    if not target_dir or not os.path.exists(target_dir):
-        return False, "指定された同期先フォルダが見つかりません。"
-    src_proj = os.path.join(target_dir, "projects_data.json")
-    if not os.path.exists(src_proj):
-        return False, f"同期先に案件データ ({os.path.basename(src_proj)}) が見つかりません。"
-    try:
-        shutil.copy2(src_proj, PROJECTS_FILE)
-        src_sig = os.path.join(target_dir, "signatures_data.json")
-        if os.path.exists(src_sig):
-            shutil.copy2(src_sig, SIGNATURES_FILE)
-        return True, "Googleドライブのデータから最新状態に復元しました！"
-    except Exception as e:
-        return False, f"復元エラー: {e}"
-
-# ==========================================
-# プロジェクト（案件データ）の読み書き・永続化
+# プロジェクト（案件データ）の読み書き・永続化 & クラウド自動同期
 # ==========================================
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), "projects_data.json")
 
+def merge_projects(local_list: list[dict], cloud_list: list[dict]) -> list[dict]:
+    merged_map = {}
+    for p in cloud_list:
+        if isinstance(p, dict) and "id" in p:
+            merged_map[p["id"]] = p
+    for p in local_list:
+        if isinstance(p, dict) and "id" in p:
+            pid = p["id"]
+            if pid not in merged_map:
+                merged_map[pid] = p
+            else:
+                c_up = merged_map[pid].get("updated_at", "")
+                l_up = p.get("updated_at", "")
+                if l_up > c_up:
+                    merged_map[pid] = p
+    merged = list(merged_map.values())
+    merged.sort(key=lambda x: x.get("updated_at", x.get("created_at", "")), reverse=True)
+    return merged
+
 def load_projects() -> list[dict]:
-    if not os.path.exists(PROJECTS_FILE):
+    local_projects = []
+    if os.path.exists(PROJECTS_FILE):
+        try:
+            with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    local_projects = data
+        except Exception:
+            local_projects = []
+
+    # Googleドライブ自動連携チェック＆同期
+    sync_dir = get_active_sync_dir()
+    if sync_dir:
+        cloud_file = get_or_restore_cloud_projects_file(sync_dir)
+        cloud_projects = []
+        if os.path.exists(cloud_file):
+            try:
+                with open(cloud_file, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    if isinstance(cdata, list):
+                        cloud_projects = cdata
+            except Exception:
+                cloud_projects = []
+
+        if cloud_projects and not local_projects:
+            # 他のデバイスで作成されたデータを初回自動復元！
+            local_projects = cloud_projects
+            try:
+                with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(local_projects, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        elif cloud_projects and local_projects:
+            # 双方向マージでどちらのデバイスで追加・編集された案件も維持
+            merged = merge_projects(local_projects, cloud_projects)
+            local_projects = merged
+            try:
+                with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(merged, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            try:
+                with open(cloud_file, "w", encoding="utf-8") as f:
+                    json.dump(merged, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        elif local_projects and not cloud_projects:
+            # クラウド側に初回保存
+            try:
+                with open(cloud_file, "w", encoding="utf-8") as f:
+                    json.dump(local_projects, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+    if not local_projects:
         default_samples = [
             {
                 "id": "sample_proj_1",
@@ -212,12 +403,7 @@ def load_projects() -> list[dict]:
             return default_samples
         return default_samples
 
-    try:
-        with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else []
-    except Exception:
-        return []
+    return local_projects
 
 def save_projects(projects: list[dict]):
     try:
@@ -225,6 +411,20 @@ def save_projects(projects: list[dict]):
             json.dump(projects, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"案件データの保存に失敗しました: {e}")
+
+    # Googleドライブへも常時自動保存
+    sync_dir = get_active_sync_dir()
+    if sync_dir:
+        try:
+            cloud_file = os.path.join(sync_dir, "projects_data.json")
+            with open(cloud_file, "w", encoding="utf-8") as f:
+                json.dump(projects, f, ensure_ascii=False, indent=2)
+            today_str = datetime.date.today().strftime("%Y%m%d")
+            dest_dated = os.path.join(sync_dir, f"backup_projects_{today_str}.json")
+            with open(dest_dated, "w", encoding="utf-8") as f:
+                json.dump(projects, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
 # プロジェクトセッション管理の初期化
 if "active_project_id" not in st.session_state:
@@ -1290,82 +1490,92 @@ with st.sidebar:
 
     st.markdown("---")
 
-    with st.expander("📦 バックアップ / 復元（Googleドライブ連携）"):
-        st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">全案件データのダウンロード/復元、およびGoogleドライブへの自動同期が可能です。</div>', unsafe_allow_html=True)
-
-        # --- Googleドライブ / 外部フォルダ同期設定 ---
-        st.markdown("##### 📁 Googleドライブ同期")
-        sync_cfg = load_sync_config()
-        cur_sync_dir = sync_cfg.get("sync_dir", DEFAULT_SYNC_DIR)
-        auto_sync_val = sync_cfg.get("auto_sync", True)
-
-        input_sync_dir = st.text_input(
-            "同期フォルダパス",
-            value=cur_sync_dir,
-            help="Google Drive for Desktop のマイドライブ内フォルダなどを指定できます（Macの場合はMac上のパスを指定）",
-            key="input_sync_dir"
-        )
-        ch_auto_sync = st.checkbox("案件保存時にGoogleドライブにも自動同期", value=auto_sync_val, key="chk_auto_sync")
-
-        # 設定変更時の保存
-        if input_sync_dir != cur_sync_dir or ch_auto_sync != auto_sync_val:
-            save_sync_config({"sync_dir": input_sync_dir, "auto_sync": ch_auto_sync})
-
-        # フォルダの存在チェック
-        is_dir_found = bool(input_sync_dir and os.path.exists(input_sync_dir))
-
-        if is_dir_found:
-            st.success("🟢 同期フォルダを認識しました")
+    with st.expander("☁️ デバイス間・クラウド自動同期（Googleドライブ連携）", expanded=True):
+        active_sync_dir = get_active_sync_dir()
+        if active_sync_dir:
+            st.markdown(
+                f"""
+                <div style="background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 10px; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; color: #166534; font-size: 0.88rem; display: flex; align-items: center; gap: 6px;">
+                        <span>🟢</span><span>常時自動同期が有効です</span>
+                    </div>
+                    <div style="font-size: 0.78rem; color: #15803D; margin-top: 4px; line-height: 1.45;">
+                        どのPC（Windows/Mac）でアプリを開いても、Googleドライブから最新の案件・設定データが自動同期されます。<br>
+                        <b>手動のバックアップ・復元操作は不要です。</b>
+                    </div>
+                    <div style="font-size: 0.72rem; color: #4B5563; margin-top: 6px; word-break: break-all;">
+                        📁 同期フォルダ: <code>{active_sync_dir}</code>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                if st.button("💾 今すぐ同期保存", use_container_width=True, key="btn_sync_save"):
-                    ok, msg = sync_backup_to_dir(input_sync_dir)
+                if st.button("🔄 今すぐ再同期", use_container_width=True, key="btn_sync_save"):
+                    ok, msg = sync_backup_to_dir(active_sync_dir)
                     if ok:
-                        st.toast(msg, icon="📁")
+                        st.toast("✅ Googleドライブと同期完了しました！", icon="☁️")
                     else:
                         st.error(msg)
             with col_g2:
-                if st.button("📂 同期先から復元", use_container_width=True, key="btn_sync_load"):
-                    ok, msg = restore_from_sync_dir(input_sync_dir)
+                if st.button("📂 クラウドから再読込", use_container_width=True, key="btn_sync_load"):
+                    ok, msg = restore_from_sync_dir(active_sync_dir)
                     if ok:
-                        st.toast(msg, icon="✅")
+                        st.toast("✅ Googleドライブから最新データを再読込しました！", icon="📂")
                         st.rerun()
                     else:
                         st.error(msg)
         else:
             st.markdown(
-                '<div style="font-size: 0.78rem; color: #B45309; background: #FEF3C7; padding: 6px 10px; border-radius: 6px; margin-bottom: 0.5rem;">'
-                '⚠️ 指定フォルダが未検出です。<br>'
-                '・<b>Windows</b>: Google Driveアプリで上記パスが存在するかご確認ください。<br>'
-                '・<b>Mac</b>: Mac用パス（例: <code>/Users/名前/Google Drive/...</code>）をご指定ください。<br>'
-                '・<b>Streamlit Cloud（ブラウザ）</b>: Web環境からは直接PCフォルダに書き込めないため、下の「📥 案件データを保存 (JSON)」から手動保存してください。'
-                '</div>',
+                """
+                <div style="font-size: 0.78rem; color: #B45309; background: #FEF3C7; padding: 8px 12px; border-radius: 6px; margin-bottom: 0.75rem;">
+                    ⚠️ Googleドライブフォルダが未検出です。<br>
+                    下の入力欄にGoogle Driveのマイドライブ内フォルダパスを指定してください。<br>
+                    ・<b>Windows</b>: <code>G:\\マイドライブ\\KO SUTUDIO_仕事用\\見積もりアシスタント</code><br>
+                    ・<b>Mac</b>: <code>/Users/名前/Library/CloudStorage/GoogleDrive-...</code>
+                </div>
+                """,
                 unsafe_allow_html=True
             )
 
-        st.markdown("---")
-        st.markdown("##### 📥 ファイルで保存・復元")
-        all_proj_json = json.dumps(load_projects(), ensure_ascii=False, indent=2)
-        st.download_button(
-            label="📥 案件データを保存 (JSON)",
-            data=all_proj_json,
-            file_name=f"ma_assistant_projects_{datetime.date.today().strftime('%Y%m%d')}.json",
-            mime="application/json",
-            use_container_width=True,
-            key="dl_backup_btn"
-        )
+        with st.expander("⚙️ 同期先フォルダの個別設定・変更"):
+            sync_cfg = load_sync_config()
+            cur_sync_dir = sync_cfg.get("sync_dir", DEFAULT_SYNC_DIR)
+            auto_sync_val = sync_cfg.get("auto_sync", True)
 
-        uploaded_backup = st.file_uploader("📤 JSONバックアップを復元", type=["json"], key="upload_backup")
-        if uploaded_backup is not None:
-            if st.button("復元を実行", key="btn_restore"):
-                try:
-                    restore_data = json.load(uploaded_backup)
-                    if isinstance(restore_data, list):
-                        save_projects(restore_data)
-                        st.success("✅ データを復元しました！")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"復元エラー: {e}")
+            input_sync_dir = st.text_input(
+                "同期先フォルダパス",
+                value=cur_sync_dir,
+                help="Google Drive for Desktop のマイドライブ内フォルダなどを指定できます（Macの場合はMac上のパスを指定）",
+                key="input_sync_dir"
+            )
+            ch_auto_sync = st.checkbox("案件保存時にGoogleドライブにも自動同期", value=auto_sync_val, key="chk_auto_sync")
+            if input_sync_dir != cur_sync_dir or ch_auto_sync != auto_sync_val:
+                save_sync_config({"sync_dir": input_sync_dir, "auto_sync": ch_auto_sync})
+
+        with st.expander("📥 手動バックアップ (JSONファイル保存・復元)"):
+            st.markdown('<div style="font-size: 0.78rem; color: #64748B; margin-bottom: 0.5rem;">万が一の予備用として、JSONファイルを直接ダウンロード・アップロードできます。</div>', unsafe_allow_html=True)
+            all_proj_json = json.dumps(load_projects(), ensure_ascii=False, indent=2)
+            st.download_button(
+                label="📥 案件データを保存 (JSON)",
+                data=all_proj_json,
+                file_name=f"ma_assistant_projects_{datetime.date.today().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True,
+                key="dl_backup_btn"
+            )
+            uploaded_backup = st.file_uploader("📤 JSONバックアップを復元", type=["json"], key="upload_backup")
+            if uploaded_backup is not None:
+                if st.button("復元を実行", key="btn_restore"):
+                    try:
+                        restore_data = json.load(uploaded_backup)
+                        if isinstance(restore_data, list):
+                            save_projects(restore_data)
+                            st.success("✅ データを復元しました！")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"復元エラー: {e}")
 
     with st.expander("🖋️ 署名の事前登録・編集"):
         st.markdown('<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 0.5rem;">登録した署名は、各メッセージの末尾でワンクリックで使い分けできます。</div>', unsafe_allow_html=True)
