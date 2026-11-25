@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import requests
 import streamlit as st
 
 # ==========================================
@@ -92,23 +93,87 @@ def resolve_sync_dir(configured_dir: str = "") -> str:
 def load_sync_config() -> dict:
     default_cfg = {
         "sync_dir": DEFAULT_SYNC_DIR,
-        "auto_sync": True
+        "auto_sync": True,
+        "gas_url": ""
     }
     if not os.path.exists(SYNC_CONFIG_FILE):
         return default_cfg
     try:
         with open(SYNC_CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data if isinstance(data, dict) else default_cfg
+            if isinstance(data, dict):
+                return {**default_cfg, **data}
+            return default_cfg
     except Exception:
         return default_cfg
 
 def save_sync_config(cfg: dict):
     try:
+        cur = load_sync_config()
+        cur.update(cfg)
         with open(SYNC_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            json.dump(cur, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+def get_gas_url() -> str:
+    """
+    Streamlit Secrets / 設定ファイル / セッション状態から
+    Google Apps Script (GAS) Web APIのURLを取得する
+    """
+    try:
+        if hasattr(st, "secrets"):
+            for key in ["GAS_SYNC_URL", "gas_sync_url", "GAS_URL", "gas_url"]:
+                if key in st.secrets:
+                    val = str(st.secrets[key]).strip()
+                    if val.startswith("http"):
+                        return val
+    except Exception:
+        pass
+
+    cfg = load_sync_config()
+    conf_url = cfg.get("gas_url", "").strip()
+    if conf_url.startswith("http"):
+        return conf_url
+
+    session_url = st.session_state.get("gas_url_custom", "").strip()
+    if session_url.startswith("http"):
+        return session_url
+
+    return ""
+
+def fetch_from_gas(data_type: str) -> any:
+    """GAS Web APIから指定種別のデータを取得（タイムアウト6秒）"""
+    url = get_gas_url()
+    if not url:
+        return None
+    try:
+        resp = requests.get(url, params={"type": data_type}, timeout=6)
+        if resp.status_code == 200 and resp.text.strip():
+            return resp.json()
+    except Exception:
+        pass
+    return None
+
+def save_to_gas(data_type: str, data: any) -> tuple[bool, str]:
+    """GAS Web APIへデータを保存（タイムアウト8秒）"""
+    url = get_gas_url()
+    if not url:
+        return False, "GAS URLが未設定です"
+    try:
+        payload = json.dumps(data, ensure_ascii=False)
+        resp = requests.post(
+            url,
+            params={"type": data_type},
+            data=payload.encode("utf-8"),
+            headers={"Content-Type": "text/plain; charset=utf-8"},
+            timeout=8
+        )
+        if resp.status_code == 200:
+            return True, "クラウド同期完了"
+        return False, f"HTTPエラー: {resp.status_code}"
+    except Exception as e:
+        return False, f"通信エラー: {e}"
 
 def get_active_sync_dir() -> str:
     cfg = load_sync_config()
@@ -172,6 +237,48 @@ def restore_from_sync_dir(target_dir: str) -> tuple[bool, str]:
     except Exception as e:
         return False, f"復元エラー: {e}"
 
+def sync_all_with_gas() -> tuple[bool, str]:
+    """GAS経由で案件、署名、番組データをすべて双方向同期"""
+    gas_url = get_gas_url()
+    if not gas_url:
+        return False, "GAS Web APIのURLが設定されていません。"
+    try:
+        # 1. 案件データ取得＆マージ＆再アップロード
+        cloud_p = fetch_from_gas("projects")
+        local_p = []
+        if os.path.exists(PROJECTS_FILE):
+            try:
+                with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
+                    local_p = json.load(f)
+            except Exception:
+                pass
+        if cloud_p and isinstance(cloud_p, list):
+            merged = merge_projects(local_p, cloud_p)
+        else:
+            merged = local_p
+        
+        save_projects(merged)
+
+        # 2. 署名データ
+        cloud_s = fetch_from_gas("signatures")
+        if cloud_s and isinstance(cloud_s, dict):
+            save_signatures(cloud_s)
+        else:
+            local_s = load_signatures()
+            save_to_gas("signatures", local_s)
+
+        # 3. カスタム番組データ
+        cloud_pr = fetch_from_gas("programs")
+        if cloud_pr and isinstance(cloud_pr, list):
+            save_custom_programs(cloud_pr)
+        else:
+            local_pr = load_custom_programs()
+            save_to_gas("programs", local_pr)
+
+        return True, "Googleドライブとの同期が完了しました！"
+    except Exception as e:
+        return False, f"同期エラー: {e}"
+
 # ==========================================
 # 固定単価番組（マスタデータ）の読み書き
 # ==========================================
@@ -181,6 +288,20 @@ def load_custom_programs() -> list[dict]:
     default_programs = [
         {"name": "中島知子のおんせんさんぽ", "price": 3000}
     ]
+    # 1. GAS Web同期チェック
+    gas_url = get_gas_url()
+    if gas_url and not st.session_state.get("_gas_prog_fetched", False):
+        c_prog = fetch_from_gas("programs")
+        st.session_state._gas_prog_fetched = True
+        if c_prog and isinstance(c_prog, list):
+            try:
+                with open(PROGRAMS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(c_prog, f, ensure_ascii=False, indent=2)
+                return c_prog
+            except Exception:
+                return c_prog
+
+    # 2. PCローカル同期
     sync_dir = get_active_sync_dir()
     cloud_prog = os.path.join(sync_dir, "custom_programs.json") if sync_dir else ""
     if cloud_prog and os.path.exists(cloud_prog) and not os.path.exists(PROGRAMS_FILE):
@@ -211,6 +332,11 @@ def save_custom_programs(programs: list[dict]):
             json.dump(programs, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"番組データの保存に失敗しました: {e}")
+    # GAS Webクラウド自動保存
+    gas_url = get_gas_url()
+    if gas_url:
+        save_to_gas("programs", programs)
+    # PCローカルGoogleドライブ自動保存
     sync_dir = get_active_sync_dir()
     if sync_dir:
         try:
@@ -232,6 +358,20 @@ def load_signatures() -> dict:
         "lancers": "MAクリエイター（ランサーズ）",
         "realname": "山田 太郎\n音声編集・MAミキサー\nMail: info@example.com"
     }
+    # 1. GAS Web同期チェック
+    gas_url = get_gas_url()
+    if gas_url and not st.session_state.get("_gas_sig_fetched", False):
+        c_sig = fetch_from_gas("signatures")
+        st.session_state._gas_sig_fetched = True
+        if c_sig and isinstance(c_sig, dict):
+            try:
+                with open(SIGNATURES_FILE, "w", encoding="utf-8") as f:
+                    json.dump(c_sig, f, ensure_ascii=False, indent=2)
+                return c_sig
+            except Exception:
+                return c_sig
+
+    # 2. PCローカル同期
     sync_dir = get_active_sync_dir()
     cloud_sig = os.path.join(sync_dir, "signatures_data.json") if sync_dir else ""
     if cloud_sig and os.path.exists(cloud_sig) and not os.path.exists(SIGNATURES_FILE):
@@ -264,6 +404,11 @@ def save_signatures(sig_data: dict):
             json.dump(sig_data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"署名データの保存に失敗しました: {e}")
+    # GAS Webクラウド自動保存
+    gas_url = get_gas_url()
+    if gas_url:
+        save_to_gas("signatures", sig_data)
+    # PCローカルGoogleドライブ自動保存
     sync_dir = get_active_sync_dir()
     if sync_dir:
         try:
@@ -324,7 +469,23 @@ def load_projects() -> list[dict]:
         except Exception:
             local_projects = []
 
-    # Googleドライブ自動連携チェック＆同期
+    # 1. GAS Webクラウド自動同期（スマホ・別PC・タブレット等どこから開いても最新取得）
+    gas_url = get_gas_url()
+    if gas_url and not st.session_state.get("_gas_projects_fetched", False):
+        st.session_state._gas_projects_fetched = True
+        cloud_p = fetch_from_gas("projects")
+        if cloud_p and isinstance(cloud_p, list):
+            if not local_projects:
+                local_projects = cloud_p
+            else:
+                local_projects = merge_projects(local_projects, cloud_p)
+            try:
+                with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(local_projects, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+    # 2. GoogleドライブPCローカル自動連携チェック＆同期（Windows G:ドライブ等）
     sync_dir = get_active_sync_dir()
     if sync_dir:
         cloud_file = get_or_restore_cloud_projects_file(sync_dir)
@@ -412,7 +573,12 @@ def save_projects(projects: list[dict]):
     except Exception as e:
         st.error(f"案件データの保存に失敗しました: {e}")
 
-    # Googleドライブへも常時自動保存
+    # 1. GAS Webクラウドへ自動保存（Streamlit Cloud / Web環境から直接Googleドライブ更新）
+    gas_url = get_gas_url()
+    if gas_url:
+        save_to_gas("projects", projects)
+
+    # 2. GoogleドライブPCローカルへも常時自動保存
     sync_dir = get_active_sync_dir()
     if sync_dir:
         try:
@@ -1490,21 +1656,59 @@ with st.sidebar:
 
     st.markdown("---")
 
-    with st.expander("☁️ デバイス間・クラウド自動同期（Googleドライブ連携）", expanded=True):
+    with st.expander("☁️ デバイス間・Googleドライブ自動同期", expanded=True):
+        gas_url = get_gas_url()
         active_sync_dir = get_active_sync_dir()
-        if active_sync_dir:
+
+        if gas_url:
+            st.markdown(
+                """
+                <div style="background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 10px; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; color: #166534; font-size: 0.88rem; display: flex; align-items: center; gap: 6px;">
+                        <span>🟢</span><span>Web常時同期が有効です（全デバイス・ブラウザ対応）</span>
+                    </div>
+                    <div style="font-size: 0.78rem; color: #15803D; margin-top: 4px; line-height: 1.45;">
+                        どのPC（Windows/Mac）・スマートフォン・タブレットからブラウザで開いても、Googleドライブから最新の案件・設定データが自動同期されます。<br>
+                        <b>手動のバックアップ・復元操作は不要です。</b>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                if st.button("🔄 今すぐ同期", use_container_width=True, key="btn_sync_gas"):
+                    with st.spinner("Googleドライブと同期中..."):
+                        ok, msg = sync_all_with_gas()
+                    if ok:
+                        st.toast("✅ Googleドライブと同期完了しました！", icon="☁️")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with col_g2:
+                if st.button("📂 クラウドから再読込", use_container_width=True, key="btn_reload_gas"):
+                    with st.spinner("最新データを取得中..."):
+                        cloud_p = fetch_from_gas("projects")
+                        if cloud_p and isinstance(cloud_p, list):
+                            save_projects(cloud_p)
+                            st.session_state._gas_projects_fetched = True
+                            st.toast("✅ 最新データを再読込しました！", icon="📂")
+                            st.rerun()
+                        else:
+                            st.error("クラウドデータの取得に失敗しました。")
+        elif active_sync_dir:
             st.markdown(
                 f"""
                 <div style="background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 10px; margin-bottom: 0.75rem;">
                     <div style="font-weight: 700; color: #166534; font-size: 0.88rem; display: flex; align-items: center; gap: 6px;">
-                        <span>🟢</span><span>常時自動同期が有効です</span>
+                        <span>🟢</span><span>PCローカルGoogleドライブ連携中</span>
                     </div>
                     <div style="font-size: 0.78rem; color: #15803D; margin-top: 4px; line-height: 1.45;">
-                        どのPC（Windows/Mac）でアプリを開いても、Googleドライブから最新の案件・設定データが自動同期されます。<br>
-                        <b>手動のバックアップ・復元操作は不要です。</b>
+                        このPCのGoogleドライブフォルダと自動同期しています。<br>
+                        ※スマホや他PCのWeb版でも同期したい場合は、下の「🌐 Web常時同期（GAS連携）」を設定してください。
                     </div>
                     <div style="font-size: 0.72rem; color: #4B5563; margin-top: 6px; word-break: break-all;">
-                        📁 同期フォルダ: <code>{active_sync_dir}</code>
+                        📁 同期先: <code>{active_sync_dir}</code>
                     </div>
                 </div>
                 """,
@@ -1529,28 +1733,140 @@ with st.sidebar:
         else:
             st.markdown(
                 """
-                <div style="font-size: 0.78rem; color: #B45309; background: #FEF3C7; padding: 8px 12px; border-radius: 6px; margin-bottom: 0.75rem;">
-                    ⚠️ Googleドライブフォルダが未検出です。<br>
-                    下の入力欄にGoogle Driveのマイドライブ内フォルダパスを指定してください。<br>
-                    ・<b>Windows</b>: <code>G:\\マイドライブ\\KO SUTUDIO_仕事用\\見積もりアシスタント</code><br>
-                    ・<b>Mac</b>: <code>/Users/名前/Library/CloudStorage/GoogleDrive-...</code>
+                <div style="font-size: 0.78rem; color: #1E3A8A; background: #EFF6FF; padding: 8px 12px; border-radius: 6px; margin-bottom: 0.75rem; border: 1px solid #BFDBFE;">
+                    💡 <b>どのデバイス（スマホ・PC・タブレット）でも過去案件を自動共有</b><br>
+                    下の「🌐 Web常時同期（GAS連携）」を設定すると、手動バックアップ不要で常に全端末で最新データが同期されます。
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-        with st.expander("⚙️ 同期先フォルダの個別設定・変更"):
+        with st.expander("🌐 Web常時同期（Google Apps Script連携）の設定", expanded=not bool(gas_url)):
+            st.markdown(
+                '<div style="font-size: 0.78rem; color: #475569; margin-bottom: 0.5rem;">'
+                'Google Drive内に作成したGAS（Google Apps Script）のWebアプリURLを入力すると、'
+                'Streamlit Cloud上の全デバイスからGoogleドライブの案件・署名データを完全自動同期できます。'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            cur_gas_val = gas_url
+            input_gas_val = st.text_input(
+                "GAS Webアプリ URL",
+                value=cur_gas_val,
+                type="password" if cur_gas_val else "default",
+                help="https://script.google.com/macros/s/.../exec 形式のURL",
+                key="input_gas_url_field"
+            )
+            col_gas_b1, col_gas_b2 = st.columns(2)
+            with col_gas_b1:
+                if st.button("💾 URLを保存", use_container_width=True, key="btn_save_gas_url"):
+                    clean_url = input_gas_val.strip()
+                    save_sync_config({"gas_url": clean_url})
+                    st.session_state.gas_url_custom = clean_url
+                    st.toast("✅ GAS URLを保存しました！", icon="💾")
+                    st.rerun()
+            with col_gas_b2:
+                if st.button("🔌 接続テスト", use_container_width=True, key="btn_test_gas"):
+                    test_url = input_gas_val.strip() or gas_url
+                    if not test_url:
+                        st.error("URLを入力してください。")
+                    else:
+                        try:
+                            with st.spinner("通信テスト中..."):
+                                resp = requests.get(test_url, params={"type": "projects"}, timeout=8)
+                            if resp.status_code == 200:
+                                st.success("✅ 接続成功！Googleドライブと通信できました。")
+                            else:
+                                st.error(f"HTTPステータス: {resp.status_code}")
+                        except Exception as te:
+                            st.error(f"接続失敗: {te}")
+
+            with st.expander("📖 3分でできるGAS Webアプリの設定手順"):
+                st.markdown(
+                    """
+                    1. [Google Drive](https://drive.google.com/) を開く
+                    2. 左上の「**＋ 新規**」→「**その他**」→「**Google Apps Script**」をクリック
+                    3. エディタに表示されたコードをすべて消し、下のコードを貼り付ける
+                    4. 右上の「**デプロイ**」→「**新しいデプロイ**」をクリック
+                    5. 種類の選択で「**ウェブアプリ**」を選択
+                       - **次のユーザーとして実行**: 自分
+                       - **アクセスできるユーザー**: 全員（Anyone）
+                    6. 「**デプロイ**」をクリックし、承認を許可する
+                    7. 発行された「**ウェブアプリのURL**」をコピーして上の入力欄に貼り付けて保存！
+                    """
+                )
+                gas_code_snippet = """// ==========================================
+// 見積もりアシスタント Google Drive 同期API
+// ==========================================
+function getTargetFolder() {
+  var parentName = "KO SUTUDIO_仕事用";
+  var subName = "見積もりアシスタント";
+  var parents = DriveApp.getFoldersByName(parentName);
+  var parent = parents.hasNext() ? parents.next() : DriveApp.createFolder(parentName);
+  var subs = parent.getFoldersByName(subName);
+  return subs.hasNext() ? subs.next() : parent.createFolder(subName);
+}
+
+function getFileName(type) {
+  if (type === "signatures") return "signatures_data.json";
+  if (type === "programs") return "custom_programs.json";
+  return "projects_data.json";
+}
+
+function doGet(e) {
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "projects";
+  var folder = getTargetFolder();
+  var fileName = getFileName(type);
+  var files = folder.getFilesByName(fileName);
+  var content = "[]";
+  if (type === "signatures") content = "{}";
+  if (files.hasNext()) {
+    content = files.next().getBlob().getDataAsString("UTF-8");
+  }
+  return ContentService.createTextOutput(content).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "projects";
+  var content = (e && e.postData && e.postData.contents) ? e.postData.contents : "";
+  if (!content) {
+    return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Empty body"})).setMimeType(ContentService.MimeType.JSON);
+  }
+  var folder = getTargetFolder();
+  var fileName = getFileName(type);
+  var files = folder.getFilesByName(fileName);
+  if (files.hasNext()) {
+    files.next().setContent(content);
+  } else {
+    folder.createFile(fileName, content, "application/json");
+  }
+  // 案件データの場合は日別バックアップも自動作成
+  if (type === "projects") {
+    var todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyyMMdd");
+    var backupName = "backup_projects_" + todayStr + ".json";
+    var bfiles = folder.getFilesByName(backupName);
+    if (bfiles.hasNext()) {
+      bfiles.next().setContent(content);
+    } else {
+      folder.createFile(backupName, content, "application/json");
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({status: "ok"})).setMimeType(ContentService.MimeType.JSON);
+}"""
+                st.code(gas_code_snippet, language="javascript")
+
+        with st.expander("📁 PCローカル同期先フォルダの設定"):
             sync_cfg = load_sync_config()
             cur_sync_dir = sync_cfg.get("sync_dir", DEFAULT_SYNC_DIR)
             auto_sync_val = sync_cfg.get("auto_sync", True)
 
             input_sync_dir = st.text_input(
-                "同期先フォルダパス",
+                "同期先フォルダパス（PC実行時）",
                 value=cur_sync_dir,
-                help="Google Drive for Desktop のマイドライブ内フォルダなどを指定できます（Macの場合はMac上のパスを指定）",
+                help="Google Drive for Desktop のマイドライブ内フォルダなどを指定できます",
                 key="input_sync_dir"
             )
-            ch_auto_sync = st.checkbox("案件保存時にGoogleドライブにも自動同期", value=auto_sync_val, key="chk_auto_sync")
+            ch_auto_sync = st.checkbox("案件保存時にローカルGoogleドライブにも同期", value=auto_sync_val, key="chk_auto_sync")
             if input_sync_dir != cur_sync_dir or ch_auto_sync != auto_sync_val:
                 save_sync_config({"sync_dir": input_sync_dir, "auto_sync": ch_auto_sync})
 
