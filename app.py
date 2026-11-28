@@ -691,6 +691,225 @@ def format_client_display(name: str, honorific: str = "様") -> str:
             return cleaned
     return f"{cleaned} {honorific}"
 
+# ==========================================
+# 依頼メッセージからのスマート自動解析エンジン
+# ==========================================
+def parse_inquiry_message(text: str) -> dict:
+    """
+    クライアントからのメール・相談メッセージから
+    案件情報（会社/氏名、案件名、尺、納期、作業内容、初回/リピート等）を高精度に抽出
+    """
+    res = {
+        "client_name": "",
+        "honorific": "様",
+        "project_name": "",
+        "duration": 15.0,
+        "genre": "YouTube・配信",
+        "delivery_date": None,
+        "delivery_time": "18:00",
+        "greeting_type": GREETING_OPTIONS[0],
+        "task_noise": True,
+        "task_volume": True,
+        "task_bgm": True,
+        "task_master": True,
+        "custom_tasks": [],
+        "audio_spec": "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)"
+    }
+    if not text or not text.strip():
+        return res
+
+    cleaned_text = text.strip()
+    lines = [l.strip() for l in cleaned_text.splitlines() if l.strip()]
+
+    # 1. 初回 / リピート判定
+    is_new = False
+    new_keywords = ["はじめまして", "初めまして", "初めてご連絡", "初めてご相談", "初めての依頼", "新規の案件", "お初にお目にかかります", "お声がけいただき"]
+    repeat_keywords = ["いつもお世話", "いつも大変お世話", "前回の", "引き続き", "先日の", "リピート", "今回も"]
+    for kw in new_keywords:
+        if kw in cleaned_text:
+            is_new = True
+            break
+    if not is_new:
+        for kw in repeat_keywords:
+            if kw in cleaned_text:
+                is_new = False
+                break
+    res["greeting_type"] = GREETING_OPTIONS[1] if is_new else GREETING_OPTIONS[0]
+
+    # 2. クライアント名（名乗り抽出）
+    client_name = ""
+    for line in lines[:8]:
+        c_line = re.sub(r'^(?:いつも|大変|お世話になっております|初めまして|はじめまして|[、。！？\s])+', '', line)
+        m = re.search(r'(?:([^\s,、。]+(?:株式会社|合同会社|有限会社)[^\s,、。]*|[^\s,、。]+)の)?\s*([^\s,、。]{1,10})(?:と申します|です|より)', c_line)
+        if m:
+            comp = m.group(1).strip() if m.group(1) else ""
+            p_name = m.group(2).strip()
+            if p_name not in ["お願い", "ご連絡", "相談", "見積もり", "お伺い", "問い合わせ", "依頼"] and not any(p_name.endswith(sfx) for sfx in ["様", "さん", "殿"]):
+                if comp:
+                    client_name = f"{comp} {p_name}"
+                else:
+                    client_name = p_name
+                break
+    res["client_name"] = client_name
+
+    # 3. 案件名
+    proj_name = ""
+    m_bracket = re.search(r'[「『【]([^」』】\n]{2,35})[」』】]', cleaned_text)
+    if m_bracket:
+        proj_name = m_bracket.group(1).strip()
+    else:
+        m_word = re.search(r'([^\s,、。]{2,25}(?:対談動画|CM(?:動画)?|動画|番組|ラジオ|インタビュー|YouTube|PV|ボイスドラマ|ナレーション))', cleaned_text)
+        if m_word:
+            proj_name = m_word.group(1).strip()
+        else:
+            m_of = re.search(r'([^\s,、。]{2,25})(?:の|について|に関する)?(?:MA(?:作業|編集)?|音声編集|整音|ミックス)', cleaned_text, re.IGNORECASE)
+            if m_of:
+                cand = m_of.group(1).strip()
+                if cand not in ["BGM", "SE", "効果音", "音源", "素材"]:
+                    proj_name = cand
+    res["project_name"] = proj_name
+
+    # 4. 尺・分数
+    m_hour_min = re.search(r'(\d+)\s*(?:時間|h|hr)\s*(\d+)?\s*(?:分|min)?', cleaned_text, re.IGNORECASE)
+    m_min = re.search(r'(?:約|想定|尺)?\s*(\d+(?:\.\d+)?)\s*(?:分|min|m)(?:程度|前後|尺|間)?', cleaned_text, re.IGNORECASE)
+    m_tc = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', cleaned_text)
+    if m_hour_min:
+        h = int(m_hour_min.group(1))
+        m = int(m_hour_min.group(2)) if m_hour_min.group(2) else 0
+        res["duration"] = float(h * 60 + m)
+    elif m_min:
+        res["duration"] = float(m_min.group(1))
+    elif m_tc:
+        if m_tc.group(3):
+            res["duration"] = round(int(m_tc.group(1)) * 60 + int(m_tc.group(2)) + int(m_tc.group(3))/60.0, 1)
+        else:
+            res["duration"] = round(int(m_tc.group(1)) + int(m_tc.group(2))/60.0, 1)
+
+    # 5. 希望納期（日付 & 時間）
+    today = datetime.date.today()
+    target_date = None
+    m_date = re.search(r'(?:(\d{4})[年/.-])?\s*(\d{1,2})[月/.-](\d{1,2})日?', cleaned_text)
+    if m_date:
+        y = int(m_date.group(1)) if m_date.group(1) else today.year
+        mo = int(m_date.group(2))
+        da = int(m_date.group(3))
+        try:
+            target_date = datetime.date(y, mo, da)
+            if not m_date.group(1) and target_date < today:
+                target_date = datetime.date(y + 1, mo, da)
+        except Exception:
+            pass
+    res["delivery_date"] = target_date
+
+    m_time = re.search(r'(\d{1,2})(?::|時)(\d{2})?(?:分)?(?:まで|頃|希望)?', cleaned_text)
+    t_str = "18:00"
+    if m_time:
+        hr = int(m_time.group(1))
+        mn = int(m_time.group(2)) if m_time.group(2) else 0
+        t_str = f"{hr:02d}:{mn:02d}"
+    res["delivery_time"] = t_str
+
+    # 6. ジャンル
+    if any(k in cleaned_text for k in ["ドラマ", "映画", "自主映画", "シネマ", "短編"]):
+        res["genre"] = "ドラマ・自主映画"
+    elif any(k in cleaned_text for k in ["CM", "15秒", "30秒", "コマーシャル"]):
+        res["genre"] = "CM（15秒・30秒）"
+    elif any(k in cleaned_text for k in ["番組", "テレビ", "TV", "バラエティ", "特番"]):
+        res["genre"] = "番組"
+    else:
+        res["genre"] = "YouTube・配信"
+
+    # 7. 作業内容の検出
+    res["task_noise"] = any(k in cleaned_text for k in ["ノイズ", "リップ", "空調", "部屋鳴り", "ヒス", "雑音", "整音", "クリック"])
+    res["task_volume"] = any(k in cleaned_text for k in ["音量", "音圧", "バランス", "レベル", "ラウドネス", "聞き取り", "EQ", "コンプ"])
+    res["task_bgm"] = any(k in cleaned_text for k in ["BGM", "SE", "効果音", "音楽", "ダッキング", "サントラ"])
+    res["task_master"] = any(k in cleaned_text for k in ["マスタリング", "書き出し", "WAV", "納品データ", "48k"])
+    if not any([res["task_noise"], res["task_volume"], res["task_bgm"], res["task_master"]]):
+        res["task_noise"] = True
+        res["task_volume"] = True
+        res["task_bgm"] = True
+        res["task_master"] = True
+
+    # 8. 音声仕様（ラウドネス規準）
+    if "-14" in cleaned_text:
+        res["audio_spec"] = "目標ラウドネス値 -14.0 LKFS (TP -1.0dBTP以下)"
+    elif "-16" in cleaned_text:
+        res["audio_spec"] = "目標ラウドネス値 -16.0 LKFS (TP -1.0dBTP以下)"
+    else:
+        res["audio_spec"] = "平均ラウドネス値 -24.0 LKFS (TP -1.0dBTP以下)"
+
+    # 9. 特記事項・カスタム作業内容
+    custom_lines = []
+    if "フォーリー" in cleaned_text or "足音" in cleaned_text:
+        custom_lines.append("フォーリー音・動作音の作成")
+    if "ステム" in cleaned_text or "パラ" in cleaned_text:
+        custom_lines.append("パラデータ（ステム音源）の書き出し")
+    if "テロップ" in cleaned_text or "カット" in cleaned_text:
+        custom_lines.append("テロップ・カット点に合わせた効果音配置")
+    res["custom_tasks"] = custom_lines
+
+    return res
+
+def apply_parsed_inquiry_to_session(parsed: dict):
+    """解析結果を各セッションステートに一括適用"""
+    # クライアント名 & 敬称
+    if parsed.get("client_name"):
+        c_name = parsed["client_name"]
+        st.session_state.proj_client_name = c_name
+        st.session_state.t1_client_name = c_name
+        st.session_state.t2_client_name = c_name
+        st.session_state.t3_client_name = c_name
+
+    # 案件名
+    if parsed.get("project_name"):
+        p_name = parsed["project_name"]
+        st.session_state.proj_project_name = p_name
+        st.session_state.t1_project_name = p_name
+        st.session_state.t2_project_name = p_name
+        st.session_state.t3_project_name = p_name
+
+    # 挨拶タイプ
+    if parsed.get("greeting_type"):
+        g_type = parsed["greeting_type"]
+        st.session_state.proj_greeting_type = g_type
+        st.session_state.t1_greeting_choice = g_type
+        st.session_state.t2_greeting_choice = g_type
+        st.session_state.t3_greeting_choice = g_type
+        st.session_state.sb_greeting_choice = g_type
+
+    # 尺 & ジャンル
+    dur = parsed.get("duration", 15.0)
+    genre = parsed.get("genre", "YouTube・配信")
+    if "quote_items" in st.session_state and st.session_state.quote_items:
+        first_item = st.session_state.quote_items[0]
+        first_id = first_item["id"]
+        first_item["genre"] = genre
+        first_item["duration"] = dur
+        st.session_state[f"genre_{first_id}"] = genre
+        st.session_state[f"dur_{first_id}"] = dur
+
+    # 作業内容
+    st.session_state.chk_inc_work_contents = True
+    st.session_state.chk_task1 = parsed.get("task_noise", True)
+    st.session_state.chk_task2 = parsed.get("task_volume", True)
+    st.session_state.chk_task3 = parsed.get("task_bgm", True)
+    st.session_state.chk_task4 = parsed.get("task_master", True)
+
+    customs = parsed.get("custom_tasks", [])
+    if customs:
+        st.session_state.txt_custom_task = "\n".join(customs)
+
+    # 音声仕様
+    if parsed.get("audio_spec"):
+        st.session_state.quote_audio_spec = parsed["audio_spec"]
+
+    # 納期
+    if parsed.get("delivery_date"):
+        st.session_state.d_date_1 = parsed["delivery_date"]
+        st.session_state.s_chk_del = True
+    if parsed.get("delivery_time"):
+        st.session_state.d_time_1 = parsed["delivery_time"]
+
 def clear_quote_widget_keys():
     keys_to_delete = [
         k for k in list(st.session_state.keys())
@@ -2043,6 +2262,36 @@ with tab1:
             <span>案件情報・依頼内容の入力</span>
         </div>
         """, unsafe_allow_html=True)
+
+        # 依頼メッセージからの一括自動入力（スマート解析）
+        with st.expander("📥 依頼文・相談メッセージから一括自動入力（スマート解析）", expanded=False):
+            st.markdown(
+                '<div style="font-size: 0.82rem; color: #475569; margin-bottom: 0.5rem; line-height: 1.5;">'
+                'クライアントから届いたメールやココナラ・ランサーズ等の相談文を貼り付けると、'
+                '<b>会社/氏名・案件名・尺（分）・希望納期・作業内容・初回/リピート</b>を自動解析して各入力欄へ一発セットします。'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            raw_msg_input = st.text_area(
+                "相談・依頼メッセージを貼り付け",
+                height=110,
+                placeholder="例：\n山田様\nいつもお世話になっております。株式会社ABCの田中です。\n「YouTube対談動画（第2回）」のMAをお願いできますでしょうか。\n尺は約20分程度です。\nノイズ除去とBGMの音量バランス調整をお願いしたく、ラウドネスは-24LKFS希望です。\n納期は12/10（水）18時まででお願いできますでしょうか。",
+                key="raw_inquiry_textarea"
+            )
+            col_parse_btn1, col_parse_btn2 = st.columns([1, 1])
+            with col_parse_btn1:
+                if st.button("🚀 依頼文から各項目を自動入力", type="primary", use_container_width=True, key="btn_apply_parse"):
+                    if not raw_msg_input.strip():
+                        st.warning("⚠️ メッセージを貼り付けてください。")
+                    else:
+                        parsed_res = parse_inquiry_message(raw_msg_input)
+                        apply_parsed_inquiry_to_session(parsed_res)
+                        st.toast("✅ 依頼文から項目を自動入力しました！", icon="✨")
+                        st.rerun()
+            with col_parse_btn2:
+                if st.button("🧹 貼り付け枠をクリア", use_container_width=True, key="btn_clear_parse"):
+                    st.session_state.raw_inquiry_textarea = ""
+                    st.rerun()
 
         # 宛名・案件名（全タブ連動）
         col_c_name, col_c_hon = st.columns([3, 1])
