@@ -851,7 +851,7 @@ def parse_inquiry_message(text: str) -> dict:
     return res
 
 def apply_parsed_inquiry_to_session(parsed: dict):
-    """解析結果を各セッションステートに一括適用"""
+    """解析結果を各セッションステートに一括適用（ウィジェット描画前のスクリプト冒頭で呼ぶこと）"""
     # クライアント名 & 敬称
     if parsed.get("client_name"):
         c_name = parsed["client_name"]
@@ -903,12 +903,22 @@ def apply_parsed_inquiry_to_session(parsed: dict):
     if parsed.get("audio_spec"):
         st.session_state.quote_audio_spec = parsed["audio_spec"]
 
-    # 納期
+    # 納期（日付 & 時間帯）
     if parsed.get("delivery_date"):
-        st.session_state.d_date_1 = parsed["delivery_date"]
-        st.session_state.s_chk_del = True
+        d_val = parsed["delivery_date"]
+        st.session_state["d_date_single"] = d_val
+        st.session_state["d_date_common"] = d_val
+        st.session_state["d_date_1"] = d_val
+        st.session_state["s_chk_del"] = True
+        st.session_state["m_chk_del"] = True
     if parsed.get("delivery_time"):
-        st.session_state.d_time_1 = parsed["delivery_time"]
+        t_val = parsed["delivery_time"]
+        for target_key in ["d_time_single", "d_time_common", "d_time_1"]:
+            if t_val in TIME_OPTIONS:
+                st.session_state[target_key] = t_val
+            else:
+                st.session_state[target_key] = "✏️ 直接入力"
+                st.session_state[target_key.replace("time", "custom")] = t_val
 
 def clear_quote_widget_keys():
     keys_to_delete = [
@@ -1827,6 +1837,16 @@ def calc_duration_price(minutes: float, is_drama: bool = False) -> tuple[int, fl
 
 
 # ==========================================
+# 依頼文からのスマート解析結果が保留されている場合、UI描画前にセッションに一括反映
+# ==========================================
+if "pending_inquiry_parsed" in st.session_state:
+    _pending_parsed = st.session_state.pop("pending_inquiry_parsed")
+    apply_parsed_inquiry_to_session(_pending_parsed)
+
+if st.session_state.pop("show_parse_toast", False):
+    st.toast("✨ 依頼文から各項目を自動入力しました！", icon="✨")
+
+# ==========================================
 # サイドバー: 案件（プロジェクト）管理
 # ==========================================
 with st.sidebar:
@@ -2285,8 +2305,8 @@ with tab1:
                         st.warning("⚠️ メッセージを貼り付けてください。")
                     else:
                         parsed_res = parse_inquiry_message(raw_msg_input)
-                        apply_parsed_inquiry_to_session(parsed_res)
-                        st.toast("✅ 依頼文から項目を自動入力しました！", icon="✨")
+                        st.session_state["pending_inquiry_parsed"] = parsed_res
+                        st.session_state["show_parse_toast"] = True
                         st.rerun()
             with col_parse_btn2:
                 if st.button("🧹 貼り付け枠をクリア", use_container_width=True, key="btn_clear_parse"):
