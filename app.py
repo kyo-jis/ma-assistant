@@ -2628,9 +2628,12 @@ with tab1:
                     c_task3 = st.checkbox("BGM・効果音MA", value=st.session_state.get("chk_task3", True), key="chk_task3", help="BGM・効果音（SE）のMA処理・整音ミックス")
                     c_task4 = st.checkbox("マスタリング・書出", value=st.session_state.get("chk_task4", True), key="chk_task4", help="マスタリングおよび指定フォーマットでの書き出し")
 
-                c_custom_task = st.text_input(
-                    "追加の作業内容（任意）",
+                c_custom_task = st.text_area(
+                    "追加の作業内容（任意・複数行可）",
                     value=st.session_state.get("txt_custom_task", ""),
+                    height=85,
+                    placeholder="改行して複数入力できます（例：\nフォーリー音・足音等の作成\nパラデータ（ステム音源）の書き出し）",
+                    help="改行して入力すると、送信メッセージ側でも1行ずつ箇条書きとして反映されます",
                     key="txt_custom_task"
                 )
 
@@ -2924,8 +2927,17 @@ with tab1:
                 tasks_coconala.append("・マスタリングおよび指定フォーマットでの書き出し")
                 tasks_detailed.append("規定ラウドネス値に合わせた最終マスタリング")
             if c_custom_task.strip():
-                tasks_coconala.append(f"・{c_custom_task.strip()}")
-                tasks_detailed.append(c_custom_task.strip())
+                for line in c_custom_task.strip().splitlines():
+                    cleaned_line = line.strip()
+                    if cleaned_line:
+                        if cleaned_line.startswith(("・", "-", "*")):
+                            coc_line = cleaned_line
+                            det_line = re.sub(r'^[・\-*]\s*', '', cleaned_line)
+                        else:
+                            coc_line = f"・{cleaned_line}"
+                            det_line = cleaned_line
+                        tasks_coconala.append(coc_line)
+                        tasks_detailed.append(det_line)
 
             if tasks_coconala:
                 work_block_coconala = "■ 主な作業内容\n" + "\n".join(tasks_coconala)
